@@ -269,6 +269,9 @@ int tas_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 
   /* open flextcp connection */
   ctx = flextcp_sockctx_get();
+#ifdef TCP_CONNECTION_STATS
+  s->data.connection.connect_ts = util_rdtsc();
+#endif
   if (flextcp_connection_open(ctx, &s->data.connection.c,
         ntohl(sin->sin_addr.s_addr), ntohs(sin->sin_port)))
   {

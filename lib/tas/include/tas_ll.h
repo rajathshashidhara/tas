@@ -45,6 +45,14 @@
  *   - notification queue pair to flexnic
  */
 struct flextcp_context {
+
+  /* Stats to measure connection setup latency */
+#ifdef TCP_CONNECTION_STATS
+  uint64_t stats_last_ts;
+  uint64_t connect_cycles;
+  uint64_t connect_count;
+#endif
+
   /* incoming queue from the kernel */
   void *kin_base;
   uint32_t kin_len;

@@ -145,6 +145,17 @@ int flextcp_sockctx_poll(struct flextcp_context *ctx)
     }
   }
 
+#ifdef TCP_CONNECTION_STATS
+  /* Report the stats roughly every 1s on a 2GHz processor*/
+  uint64_t now = util_rdtsc();
+  if (now - ctx->stats_last_ts > 2000000000ull)
+  {
+    fprintf(stderr, "[STATS] connect() cycles=%lu count=%lu\n",
+                      ctx->connect_cycles, ctx->connect_count);
+    ctx->stats_last_ts = now;
+  }
+#endif
+
   return num;
 }
 
@@ -236,6 +247,10 @@ static inline void ev_conn_open(struct flextcp_context *ctx,
 
   if (ev->ev.conn_open.status == 0) {
     s->data.connection.status = SOC_CONNECTED;
+#ifdef TCP_CONNECTION_STATS
+    ctx->connect_cycles += (util_rdtsc() - s->data.connection.connect_ts);
+    ctx->connect_count += 1;
+#endif
     flextcp_epoll_set(s, EPOLLOUT);
   } else {
     s->data.connection.status = SOC_FAILED;

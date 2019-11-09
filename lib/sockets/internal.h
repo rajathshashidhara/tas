@@ -72,6 +72,10 @@ struct socket_pending {
 };
 
 struct socket_conn {
+  /* Stats to measure connection setup latency */
+#ifdef TCP_CONNECTION_STATS
+  uint64_t connect_ts;
+#endif
   struct flextcp_connection c;
   uint8_t status;
   uint8_t st_flags;
