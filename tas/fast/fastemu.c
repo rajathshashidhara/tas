@@ -32,6 +32,7 @@
 #include <rte_cycles.h>
 
 #include <tas_memif.h>
+#include <kernel_appif.h>
 #include <utils_log.h>
 
 #include "internal.h"
@@ -311,7 +312,7 @@ static unsigned poll_rx(struct dataplane_context *ctx, uint32_t ts)
     if (fss[i] != NULL) {
       ret = fast_flows_packet(ctx, bhs[i], fss[i], &tcpopts[i], ts);
     } else {
-      ret = -1;
+      ret = fast_syn_packet(ctx, bhs[i]);
     }
 
     if (ret > 0) {

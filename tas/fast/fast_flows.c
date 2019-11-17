@@ -31,6 +31,7 @@
 #include <utils_sync.h>
 
 #include "internal.h"
+#include "slowpath.h"
 #include "fastemu.h"
 #include "tcp_common.h"
 
@@ -272,6 +273,29 @@ void fast_flows_packet_pfbufs(struct dataplane_context *ctx,
     p = dma_pointer(rx_base + fs->rx_next_pos, 1);
     rte_prefetch0(p);
   }
+}
+
+extern int handle_syn_packet(const struct pkt_tcp *p,
+  uint32_t fn_core, uint16_t flow_group);
+
+int fast_syn_packet(struct dataplane_context *ctx,
+    struct network_buf_handle *nbh)
+{
+  struct pkt_tcp *p = network_buf_bufoff(nbh);
+  uint32_t fn_core = ctx->id;
+  uint16_t flow_group;
+  network_buf_flowgroup(nbh, &flow_group);
+
+  /* if we get syn -> handle it. syn/ack or other flags -> kernel */
+  if (!((TCPH_FLAGS(&p->tcp) & (TCP_SYN)) != 0 &&
+          (TCPH_FLAGS(&p->tcp) & (TCP_ACK)) == 0))
+  {
+    fprintf(stderr, "dma_krx_pkt_fastpath: slow path because of flags (%x)\n",
+        TCPH_FLAGS(&p->tcp));
+    return -1;
+  }
+
+  return handle_syn_packet(p, fn_core, flow_group);
 }
 
 /* Received packet */

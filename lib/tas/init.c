@@ -198,6 +198,9 @@ static int kernel_poll(struct flextcp_context *ctx, int num,
       event_kappin_st_conn_move(&kout->data.status, &events[i]);
     } else if (type == KERNEL_APPIN_STATUS_CONN_CLOSE) {
       event_kappin_st_conn_closed(&kout->data.status, &events[i]);
+    } else if (type == KERNEL_APPIN_SKIP) {
+      /* DO NOTHING */
+      j = 0;
     } else {
       fprintf(stderr, "flextcp_context_poll: unexpected kout type=%u pos=%u len=%u\n",
           type, pos, ctx->kout_len);

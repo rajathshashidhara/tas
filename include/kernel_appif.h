@@ -162,6 +162,7 @@ enum kernel_appin_type {
   KERNEL_APPIN_CONN_OPENED,
   KERNEL_APPIN_LISTEN_NEWCONN,
   KERNEL_APPIN_ACCEPTED_CONN,
+  KERNEL_APPIN_SKIP,
 };
 
 /** Generic operation status */

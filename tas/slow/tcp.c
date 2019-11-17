@@ -36,6 +36,7 @@
 #include <packet_defs.h>
 #include <utils.h>
 #include <utils_rng.h>
+#include <utils_sync.h>
 #include <slowpath.h>
 #include "internal.h"
 
@@ -103,6 +104,7 @@ static inline int send_reset(const struct pkt_tcp *p,
 static inline int parse_options(const struct pkt_tcp *p, uint16_t len,
     struct tcp_opts *opts);
 
+static uintptr_t listener_ports[PORT_MAX + 1];
 static uintptr_t ports[PORT_MAX + 1];
 static uint16_t port_eph_hint = PORT_FIRST_EPH;
 static struct nbqueue conn_async_q;
@@ -319,12 +321,13 @@ int tcp_listen(struct app_context *ctx, uint64_t opaque, uint16_t local_port,
     ports[local_port] = (uintptr_t) lst | PORT_TYPE_LISTEN;
   } else {
     lm->ls[lm->num] = lst;
-    lm->num++;
+    __atomic_add_fetch(&lm->num, 1, __ATOMIC_SEQ_CST);
     if (lm_new != NULL) {
       lm = lm_new;
       ports[local_port] = (uintptr_t) lm | PORT_TYPE_LMULTI;
     }
   }
+  __atomic_store(&listener_ports[local_port], &ports[local_port], __ATOMIC_SEQ_CST);
 
   *listen = lst;
 
@@ -812,6 +815,32 @@ static inline uint32_t hash_64_to_32(uint64_t key)
   return (uint32_t) key;
 }
 
+static struct listener *fast_listener_lookup(const struct pkt_tcp *p)
+{
+  uint16_t local_port = f_beui16(p->tcp.dest);
+  uint32_t hash;
+  uint8_t type;
+  struct listen_multi *lm;
+
+  type = listener_ports[local_port] & PORT_TYPE_MASK;
+  if (type == PORT_TYPE_LISTEN) {
+    /* single listener socket */
+    return (struct listener *) (listener_ports[local_port] & ~PORT_TYPE_MASK);
+  } else if (type == PORT_TYPE_LMULTI) {
+    /* multiple listener sockets, calculate hash */
+    lm = (struct listen_multi *) (listener_ports[local_port] & ~PORT_TYPE_MASK);
+    hash = hash_64_to_32(((uint64_t) f_beui32(p->ip.src) << 32) |
+        ((uint32_t) f_beui16(p->tcp.src) << 16) | local_port);
+    size_t ln;
+    __atomic_load(&lm->num, &ln, __ATOMIC_SEQ_CST);
+    return lm->ls[hash % ln];
+  } else {
+    return NULL;
+  }
+
+  return NULL;
+}
+
 static struct listener *listener_lookup(const struct pkt_tcp *p)
 {
   uint16_t local_port = f_beui16(p->tcp.dest);
@@ -836,6 +865,62 @@ static struct listener *listener_lookup(const struct pkt_tcp *p)
   return (struct listener *) (ports[local_port] & ~PORT_TYPE_MASK);
 }
 
+int handle_syn_packet(const struct pkt_tcp *p,
+  uint32_t fn_core, uint16_t flow_group)
+{
+  struct listener* l = fast_listener_lookup(p);
+  struct backlog_slot *bls;
+  uint16_t len;
+
+  /* make sure packet is not too long */
+  len = sizeof(p->eth) + f_beui16(p->ip.len);
+  if (UNLIKELY(len > sizeof(bls->buf))) {
+    fprintf(stderr, "listener_packet: SYN larger than backlog buffer, "
+        "dropping\n");
+    goto drop;
+  }
+
+  // TODO: Make sure we don't have this tuple already!
+  util_spin_lock(&l->lock);
+
+  /* TODO: If there are pending accepts -> Send to kernel */
+  if (l->backlog_len == l->backlog_used) {
+    util_spin_unlock(&l->lock);
+    goto drop;
+  }
+
+  uint32_t bp = l->backlog_pos + l->backlog_used;
+  if (bp >= l->backlog_len) {
+    bp -= l->backlog_len;
+  }
+
+  l->backlog_used++;
+  util_spin_unlock(&l->lock);
+
+  /* copy packet into backlog buffer */
+  l->backlog_cores[bp] = fn_core;
+  l->backlog_fgs[bp] = flow_group;
+  bls = l->backlog_ptrs[bp];
+  memcpy(bls->buf, p, len);
+  bls->len = len;
+
+  volatile struct kernel_appin* kout = appif_kout_pos(l->ctx);
+  if (kout == NULL)
+    goto drop;
+
+  kout->data.listen_newconn.opaque = l->opaque;
+  kout->data.listen_newconn.remote_ip = f_beui32(p->ip.src);
+  kout->data.listen_newconn.remote_port = f_beui16(p->tcp.src);
+  MEM_BARRIER();
+  kout->ts = util_rdtsc();
+  kout->type = KERNEL_APPIN_LISTEN_NEWCONN;
+
+  appif_ctx_needs_kick(l->ctx);
+
+drop:
+  return 0;
+}
+
 static void listener_packet(struct listener *l, const struct pkt_tcp *p,
     const struct tcp_opts *opts, uint32_t fn_core, uint16_t flow_group)
 {
@@ -858,6 +943,8 @@ static void listener_packet(struct listener *l, const struct pkt_tcp *p,
         "dropping\n");
     return;
   }
+
+  util_spin_lock(&l->lock);
 
   /* make sure we don't already have this 4-tuple */
   for (n = 0, bp = l->backlog_pos; n < l->backlog_used;
@@ -893,6 +980,7 @@ static void listener_packet(struct listener *l, const struct pkt_tcp *p,
   bls->len = len;
 
   l->backlog_used++;
+  util_spin_unlock(&l->lock);
 
   appif_listen_newconn(l, f_beui32(p->ip.src), f_beui16(p->tcp.src));
 
@@ -969,11 +1057,15 @@ static void listener_accept(struct listener *l)
   nbqueue_enq(&conn_async_q, &c->comp.el);
 
 out:
+  util_spin_lock(&l->lock);
+
   l->backlog_used--;
   l->backlog_pos++;
   if (l->backlog_pos >= l->backlog_len) {
     l->backlog_pos -= l->backlog_len;
   }
+
+  util_spin_unlock(&l->lock);
 }
 
 static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,

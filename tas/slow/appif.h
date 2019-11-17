@@ -22,8 +22,8 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef APPIF_H_
-#define APPIF_H_
+#ifndef APPIF_SLOW_H_
+#define APPIF_SLOW_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -48,11 +48,13 @@ struct app_context {
   void *kout_base;
   uint32_t kout_len;
   uint32_t kout_pos;
+  uint32_t kout_lock;
 
   struct app_doorbell *doorbell;
 
   int ready, evfd;
   uint32_t last_ts;
+  uint32_t needs_kick;
   struct app_context *next;
 
   struct {
@@ -90,5 +92,6 @@ struct application {
  * @param ctx Context to poll
  */
 unsigned appif_ctx_poll(struct application *app, struct app_context *ctx);
+void appif_ctx_kick(struct app_context *ctx);
 
 #endif /* ndef APPIF_H_ */

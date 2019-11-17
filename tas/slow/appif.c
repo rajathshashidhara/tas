@@ -183,6 +183,10 @@ unsigned appif_poll(void)
       }
       STATS_TS(ac_begin);
       n += appif_ctx_poll(app, ctx);
+
+      if (ctx->needs_kick)
+        appif_ctx_kick(ctx);
+
       STATS_TS(ac_end);
       STATS_ADD(slowpath_ctx, cyc_ac, ac_end - ac_begin);
     }

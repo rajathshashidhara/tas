@@ -22,8 +22,8 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef INTERNAL_H_
-#define INTERNAL_H_
+#ifndef INTERNAL_SLOW_H_
+#define INTERNAL_SLOW_H_
 
 /** @addtogroup kernel
  *  @brief Kernel */
@@ -34,6 +34,7 @@
 #include <utils_timeout.h>
 
 #include <tas_memif.h>
+#include <kernel_appif.h>
 
 struct config_route;
 struct connection;
@@ -595,6 +596,8 @@ struct listener {
   uint16_t port;
   /** Flags: see #nicif_connection_flags */
   uint32_t flags;
+  /** Lock */
+  volatile uint32_t lock;
 };
 
 /** List of tcp connections */
@@ -816,4 +819,7 @@ void kni_packet(const void *pkt, uint16_t len);
 /** Poll kni */
 unsigned kni_poll(void);
 
-#endif // ndef INTERNAL_H_
+
+struct kernel_appin* appif_kout_pos(struct app_context *ctx);
+void appif_ctx_needs_kick(struct app_context *ctx);
+#endif // ndef INTERNAL_SLOW_H_

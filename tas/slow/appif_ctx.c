@@ -33,6 +33,7 @@
 
 #include <tas.h>
 #include <utils_log.h>
+#include <utils_sync.h>
 #include <slowpath.h>
 #include "internal.h"
 #include "appif.h"
@@ -62,7 +63,7 @@ void appqueue_stats_dump()
 }
 #endif
 
-static void appif_ctx_kick(struct app_context *ctx)
+void appif_ctx_kick(struct app_context *ctx)
 {
   assert(ctx->evfd != 0);
   uint32_t now = util_timeout_time_us();
@@ -77,21 +78,50 @@ static void appif_ctx_kick(struct app_context *ctx)
   }
 
   ctx->last_ts = now;
+  MEM_BARRIER();
+  ctx->needs_kick = false;
 }
 
-void appif_conn_opened(struct connection *c, int status)
+void appif_ctx_needs_kick(struct app_context *ctx)
 {
-  struct app_context *ctx = c->ctx;
-  volatile struct kernel_appin *kout = ctx->kout_base;
+  ctx->needs_kick = true;
+}
+
+struct kernel_appin* appif_kout_pos(struct app_context *ctx)
+{
+  struct kernel_appin *kout = ctx->kout_base;
+
+  util_spin_lock(&ctx->kout_lock);
   uint32_t kout_pos = ctx->kout_pos;
 
   kout += kout_pos;
 
   /* make sure we have room for a response */
   if (kout->type != KERNEL_APPIN_INVALID) {
-    fprintf(stderr, "appif_conn_opened: No space in kout queue (TODO)\n");
-    return;
+    goto nospace;
   }
+
+  kout_pos++;
+  if (kout_pos >= ctx->kout_len) {
+    kout_pos = 0;
+  }
+  ctx->kout_pos = kout_pos;
+
+  util_spin_unlock(&ctx->kout_lock);
+  return kout;
+
+nospace:
+  util_spin_unlock(&ctx->kout_lock);
+  fprintf(stderr, "appif_conn_opened: No space in kout queue (TODO)\n");
+  return NULL;
+}
+
+void appif_conn_opened(struct connection *c, int status)
+{
+  struct app_context *ctx = c->ctx;
+  volatile struct kernel_appin *kout = appif_kout_pos(ctx);
+  if (kout == NULL)
+    return;
 
   kout->data.conn_opened.opaque = c->opaque;
   kout->data.conn_opened.status = status;
@@ -115,28 +145,15 @@ void appif_conn_opened(struct connection *c, int status)
   kout->ts = util_rdtsc();
   kout->type = KERNEL_APPIN_CONN_OPENED;
   appif_ctx_kick(ctx);
-
-  kout_pos++;
-  if (kout_pos >= ctx->kout_len) {
-    kout_pos = 0;
-  }
-  ctx->kout_pos = kout_pos;
 }
 
 void appif_conn_closed(struct connection *c, int status)
 {
   struct app_context *ctx = c->ctx;
   struct application *app = ctx->app;
-  volatile struct kernel_appin *kout = ctx->kout_base;
-  uint32_t kout_pos = ctx->kout_pos;
-
-  kout += kout_pos;
-
-  /* make sure we have room for a response */
-  if (kout->type != KERNEL_APPIN_INVALID) {
-    fprintf(stderr, "appif_conn_closed: No space in kout queue (TODO)\n");
+  volatile struct kernel_appin *kout = appif_kout_pos(ctx);
+  if (kout == NULL)
     return;
-  }
 
   kout->data.status.opaque = c->opaque;
   kout->data.status.status = status;
@@ -146,13 +163,7 @@ void appif_conn_closed(struct connection *c, int status)
   kout->type = KERNEL_APPIN_STATUS_CONN_CLOSE;
   appif_ctx_kick(ctx);
 
-  kout_pos++;
-  if (kout_pos >= ctx->kout_len) {
-    kout_pos = 0;
-  }
-  ctx->kout_pos = kout_pos;
-
-  /* remove from app connection list */
+  // remove from app connection list
   if (app->conns == c) {
     app->conns = c->app_next;
     c->app_prev = NULL;
@@ -171,16 +182,9 @@ void appif_listen_newconn(struct listener *l, uint32_t remote_ip,
     uint16_t remote_port)
 {
   struct app_context *ctx = l->ctx;
-  volatile struct kernel_appin *kout = ctx->kout_base;
-  uint32_t kout_pos = ctx->kout_pos;
-
-  kout += kout_pos;
-
-  /* make sure we have room for a response */
-  if (kout->type != KERNEL_APPIN_INVALID) {
-    fprintf(stderr, "appif_listen_newconn: No space in kout queue (TODO)\n");
+  volatile struct kernel_appin *kout = appif_kout_pos(ctx);
+  if (kout == NULL)
     return;
-  }
 
   kout->data.listen_newconn.opaque = l->opaque;
   kout->data.listen_newconn.remote_ip = remote_ip;
@@ -189,29 +193,15 @@ void appif_listen_newconn(struct listener *l, uint32_t remote_ip,
   kout->ts = util_rdtsc();
   kout->type = KERNEL_APPIN_LISTEN_NEWCONN;
   appif_ctx_kick(ctx);
-
-  kout_pos++;
-  if (kout_pos >= ctx->kout_len) {
-    kout_pos = 0;
-  }
-  ctx->kout_pos = kout_pos;
-
 }
 
 void appif_accept_conn(struct connection *c, int status)
 {
   struct app_context *ctx = c->ctx;
   struct application *app = ctx->app;
-  volatile struct kernel_appin *kout = ctx->kout_base;
-  uint32_t kout_pos = ctx->kout_pos;
-
-  kout += kout_pos;
-
-  /* make sure we have room for a response */
-  if (kout->type != KERNEL_APPIN_INVALID) {
-    fprintf(stderr, "appif_accept_conn: No space in kout queue (TODO)\n");
+  volatile struct kernel_appin *kout = appif_kout_pos(ctx);
+  if (kout == NULL)
     return;
-  }
 
   kout->data.accept_connection.opaque = c->opaque;
   kout->data.accept_connection.status = status;
@@ -242,34 +232,28 @@ void appif_accept_conn(struct connection *c, int status)
   kout->ts = util_rdtsc();
   kout->type = KERNEL_APPIN_ACCEPTED_CONN;
   appif_ctx_kick(ctx);
-
-  kout_pos++;
-  if (kout_pos >= ctx->kout_len) {
-    kout_pos = 0;
-  }
-  ctx->kout_pos = kout_pos;
 }
 
 
 unsigned appif_ctx_poll(struct application *app, struct app_context *ctx)
 {
   volatile struct kernel_appout *kin = ctx->kin_base;
-  volatile struct kernel_appin *kout = ctx->kout_base;
+  volatile struct kernel_appin *kout = NULL;
   uint32_t kin_pos = ctx->kin_pos;
-  uint32_t kout_pos = ctx->kout_pos;
   uint8_t type;
   int kout_inc = 0;
 
   kin += kin_pos;
-  kout += kout_pos;
-
-  /* make sure we have room for a response */
-  if (kout->type != KERNEL_APPIN_INVALID) {
-    return 0;
-  }
 
   type = kin->type;
   MEM_BARRIER();
+
+  if (type == KERNEL_APPOUT_INVALID)
+    return 0;
+
+  kout = appif_kout_pos(ctx);
+  if (kout == NULL)
+    return 0;
 
 #ifdef QUEUE_STATS
   if (type != KERNEL_APPOUT_INVALID)
@@ -281,36 +265,36 @@ unsigned appif_ctx_poll(struct application *app, struct app_context *ctx)
 
   switch (type) {
     case KERNEL_APPOUT_INVALID:
-      /* nothing yet */
+      // nothing yet
       return 0;
 
     case KERNEL_APPOUT_CONN_OPEN:
-      /* connection request */
+      // connection request
       kout_inc += kin_conn_open(app, ctx, kin, kout);
       break;
 
     case KERNEL_APPOUT_CONN_MOVE:
-      /* connection move request */
+      // connection move request
       kout_inc += kin_conn_move(app, ctx, kin, kout);
       break;
 
     case KERNEL_APPOUT_CONN_CLOSE:
-      /* connection close request */
+      // connection close request
       kout_inc += kin_conn_close(app, ctx, kin, kout);
       break;
 
     case KERNEL_APPOUT_LISTEN_OPEN:
-      /* listen request */
+      // listen request
       kout_inc += kin_listen_open(app, ctx, kin, kout);
       break;
 
     case KERNEL_APPOUT_ACCEPT_CONN:
-      /* accept request */
+      // accept request
       kout_inc += kin_accept_conn(app, ctx, kin, kout);
       break;
 
     case KERNEL_APPOUT_REQ_SCALE:
-      /* scaling request */
+      // scaling request
       kout_inc += kin_req_scale(app, ctx, kin, kout);
       break;
 
@@ -323,20 +307,17 @@ unsigned appif_ctx_poll(struct application *app, struct app_context *ctx)
   MEM_BARRIER();
   kin->type = 0;
 
-  /* update kin queue position */
+  // update kin queue position
   kin_pos++;
   if (kin_pos >= ctx->kin_len) {
     kin_pos = 0;
   }
   ctx->kin_pos = kin_pos;
 
-  /* update kout queue position if the entry was used */
-  if (kout_inc > 0) {
-    kout_pos += kout_inc;
-    if (kout_pos >= ctx->kout_len) {
-      kout_pos = 0;
-    }
-    ctx->kout_pos = kout_pos;
+  // Skip kout if appout was not used
+  if (kout_inc == 0) {
+    MEM_BARRIER();
+    kout->type = KERNEL_APPIN_SKIP;
   }
 
   return 1;
