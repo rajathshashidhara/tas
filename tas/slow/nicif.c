@@ -541,6 +541,9 @@ static inline int rxq_poll(void)
       process_packet(buf->buf, krx->msg.packet.len, krx->msg.packet.fn_core,
           krx->msg.packet.flow_group);
       break;
+    case FLEXTCP_PL_KRX_LISTEN:
+      listener_fast_notify((void*) krx->msg.lforward.laddr);
+      break;
 
     default:
       fprintf(stderr, "rxq_poll: unknown rx type 0x%x old %x len %x\n", type,

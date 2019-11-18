@@ -276,7 +276,26 @@ void fast_flows_packet_pfbufs(struct dataplane_context *ctx,
 }
 
 extern int handle_syn_packet(const struct pkt_tcp *p,
-  uint32_t fn_core, uint16_t flow_group);
+  uint32_t fn_core, uint16_t flow_group, void** listener);
+
+static inline int is_tcp_syn(struct network_buf_handle *nbh)
+{
+  struct pkt_tcp *p = network_buf_bufoff(nbh);
+  uint16_t len = network_buf_len(nbh);
+
+  int cond =
+    (len >= sizeof(*p)) &
+    (f_beui16(p->eth.type) == ETH_TYPE_IP) &
+    (p->ip.proto == IP_PROTO_TCP) &
+    (IPH_V(&p->ip) == 4) &
+    (IPH_HL(&p->ip) == 5) &
+    (TCPH_HDRLEN(&p->tcp) >= 5) &
+    (len >= f_beui16(p->ip.len) + sizeof(p->eth)) &
+    ((TCPH_FLAGS(&p->tcp) & (TCP_SYN)) != 0) &
+    ((TCPH_FLAGS(&p->tcp) & (TCP_ACK)) == 0);
+
+  return cond;
+}
 
 int fast_syn_packet(struct dataplane_context *ctx,
     struct network_buf_handle *nbh)
@@ -287,15 +306,21 @@ int fast_syn_packet(struct dataplane_context *ctx,
   network_buf_flowgroup(nbh, &flow_group);
 
   /* if we get syn -> handle it. syn/ack or other flags -> kernel */
-  if (!((TCPH_FLAGS(&p->tcp) & (TCP_SYN)) != 0 &&
-          (TCPH_FLAGS(&p->tcp) & (TCP_ACK)) == 0))
+  if (!is_tcp_syn(nbh))
   {
-    fprintf(stderr, "dma_krx_pkt_fastpath: slow path because of flags (%x)\n",
-        TCPH_FLAGS(&p->tcp));
     return -1;
   }
 
-  return handle_syn_packet(p, fn_core, flow_group);
+  void* listener = NULL;
+  int ret = handle_syn_packet(p, fn_core, flow_group, &listener);
+  if (ret == 1)
+  {
+    /* kick the kernel */
+    fast_kernel_lforward(ctx, listener);
+    ret = 0;
+  }
+
+  return ret;
 }
 
 /* Received packet */

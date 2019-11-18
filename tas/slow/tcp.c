@@ -866,11 +866,19 @@ static struct listener *listener_lookup(const struct pkt_tcp *p)
 }
 
 int handle_syn_packet(const struct pkt_tcp *p,
-  uint32_t fn_core, uint16_t flow_group)
+  uint32_t fn_core, uint16_t flow_group, void** laddr)
 {
   struct listener* l = fast_listener_lookup(p);
   struct backlog_slot *bls;
   uint16_t len;
+  uint8_t wait_conn = 0;
+
+  if (l == NULL)
+    goto drop;
+
+  volatile struct kernel_appin* kout = appif_kout_pos(l->ctx);
+  if (kout == NULL)
+    goto drop;
 
   /* make sure packet is not too long */
   len = sizeof(p->eth) + f_beui16(p->ip.len);
@@ -895,6 +903,7 @@ int handle_syn_packet(const struct pkt_tcp *p,
   }
 
   l->backlog_used++;
+  wait_conn = (l->wait_conns != NULL);
   util_spin_unlock(&l->lock);
 
   /* copy packet into backlog buffer */
@@ -903,10 +912,6 @@ int handle_syn_packet(const struct pkt_tcp *p,
   bls = l->backlog_ptrs[bp];
   memcpy(bls->buf, p, len);
   bls->len = len;
-
-  volatile struct kernel_appin* kout = appif_kout_pos(l->ctx);
-  if (kout == NULL)
-    goto drop;
 
   kout->data.listen_newconn.opaque = l->opaque;
   kout->data.listen_newconn.remote_ip = f_beui32(p->ip.src);
@@ -917,7 +922,16 @@ int handle_syn_packet(const struct pkt_tcp *p,
 
   appif_ctx_needs_kick(l->ctx);
 
+  if (wait_conn)
+  {
+    *laddr = l;
+    return 1;
+  }
+
+  return 0;
+
 drop:
+  fprintf(stderr, "handle_syn_packet: Dropping SYN packet\n");
   return 0;
 }
 
@@ -988,6 +1002,15 @@ static void listener_packet(struct listener *l, const struct pkt_tcp *p,
   if (l->wait_conns != NULL) {
     listener_accept(l);
   }
+}
+
+void listener_fast_notify(struct listener *l)
+{
+  if (l == NULL)
+    return;
+
+  if (l->wait_conns != NULL)
+    listener_accept(l);
 }
 
 static void listener_accept(struct listener *l)

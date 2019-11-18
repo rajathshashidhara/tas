@@ -75,9 +75,9 @@ void appif_ctx_kick(struct app_context *ctx)
     /* fprintf(stderr, "kicking app context!\n"); */
     int r = write(ctx->evfd, &val, sizeof(uint64_t));
     assert(r == sizeof(uint64_t));
+    ctx->last_ts = now;
   }
 
-  ctx->last_ts = now;
   MEM_BARRIER();
   ctx->needs_kick = false;
 }

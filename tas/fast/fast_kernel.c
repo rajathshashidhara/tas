@@ -123,6 +123,38 @@ static void fast_kernel_kick(void)
   last_ts = now;
 }
 
+void fast_kernel_lforward(struct dataplane_context *ctx,
+    void* listener)
+{
+  struct flextcp_pl_appctx *kctx = &fp_state->kctx[ctx->id];
+  struct flextcp_pl_krx *krx;
+
+  /* queue not initialized yet */
+  if (kctx->rx_len == 0) {
+    return;
+  }
+
+  krx = dma_pointer(kctx->rx_base + kctx->rx_head, sizeof(*krx));
+
+  /* queue full */
+  if (krx->type != 0) {
+    ctx->kernel_drop++;
+    return;
+  }
+
+  kctx->rx_head += sizeof(*krx);
+  if (kctx->rx_head >= kctx->rx_len)
+    kctx->rx_head -= kctx->rx_len;
+
+  krx->msg.lforward.laddr = (uintptr_t) listener;
+  MEM_BARRIER();
+
+  krx->ts = util_rdtsc();
+  /* krx queue header */
+  krx->type = FLEXTCP_PL_KRX_LISTEN;
+  fast_kernel_kick();
+}
+
 void fast_kernel_packet(struct dataplane_context *ctx,
     struct network_buf_handle *nbh)
 {

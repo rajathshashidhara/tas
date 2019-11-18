@@ -70,6 +70,7 @@ struct flexnic_info {
 
 #define FLEXTCP_PL_KRX_INVALID 0x0
 #define FLEXTCP_PL_KRX_PACKET 0x1
+#define FLEXTCP_PL_KRX_LISTEN 0x2
 
 /** Kernel RX queue entry */
 struct flextcp_pl_krx {
@@ -81,6 +82,9 @@ struct flextcp_pl_krx {
       uint16_t fn_core;
       uint16_t flow_group;
     } packet;
+    struct {
+      uintptr_t laddr;
+    } lforward;
     uint8_t raw[64 - sizeof(uint8_t) - sizeof(uint64_t) - sizeof(uint64_t)];
   } __attribute__((packed)) msg;
   volatile uint8_t type;

@@ -670,7 +670,7 @@ int tcp_accept(struct app_context *ctx, uint64_t opaque,
  */
 int tcp_packet(const void *pkt, uint16_t len, uint32_t fn_core,
     uint16_t flow_group);
-
+void listener_fast_notify(struct listener *l);
 /**
  * Destroy already closed/failed connection.
  *
