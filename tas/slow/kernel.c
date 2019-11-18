@@ -62,7 +62,7 @@ int kernel_notifyfd = 0;
 void controlplane_dump_stats(void)
 {
   struct kernel_context *ctx = slowpath_ctx;
-  TAS_LOG(INFO, MAIN, "CP [%u]> (POLL, EMPTY, TOTAL)", 0);
+  TAS_LOG(INFO, MAIN, "CP [%u]> (POLL, EMPTY, TOTAL)\n", 0);
 
   TAS_LOG(INFO, MAIN, "rx=(%"PRIu64",%"PRIu64",%"PRIu64")  \n",
           STATS_FETCH(ctx, rx_poll),
@@ -90,6 +90,34 @@ void controlplane_dump_stats(void)
           STATS_FETCH(ctx, tcp_poll),
           STATS_FETCH(ctx, tcp_empty),
           STATS_FETCH(ctx, tcp_total));
+  TAS_LOG(INFO, MAIN, "accept=(%"PRIu64",%"PRIu64",%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_ta),
+          STATS_FETCH(ctx, cyc_la),
+          STATS_FETCH(ctx, cyc_kac));
+  TAS_LOG(INFO, MAIN, "close=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_kclose));
+  TAS_LOG(INFO, MAIN, "cyc_kmove=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_klopen));
+  TAS_LOG(INFO, MAIN, "cyc_klopen=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_klopen));
+  TAS_LOG(INFO, MAIN, "cyc_klopen=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_klopen));
+  TAS_LOG(INFO, MAIN, "cyc_fs_lock=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_fs_lock));
+  TAS_LOG(INFO, MAIN, "stat_cyc_flow_slot_clear=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_flow_slot_clear));
+  TAS_LOG(INFO, MAIN, "stat_cyc_tcp_close=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_tcp_close));
+  TAS_LOG(INFO, MAIN, "stat_cyc_conn_close_iter=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_conn_close_iter));
+  TAS_LOG(INFO, MAIN, "stat_conn_close_cnt=(%"PRIu64") \n",
+          STATS_FETCH(ctx, conn_close_cnt));
+  TAS_LOG(INFO, MAIN, "conn_close_iter_per_close=%lF \n",
+          ((double) STATS_FETCH(ctx, cyc_conn_close_iter))/STATS_FETCH(ctx, conn_close_cnt));
+  TAS_LOG(INFO, MAIN, "cc_conn_remove=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_cc_remove));
+  TAS_LOG(INFO, MAIN, "cyc_timeout_arm=(%"PRIu64") \n",
+          STATS_FETCH(ctx, cyc_timeout_arm));
 
   TAS_LOG(INFO, MAIN, "cyc=(%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64") \n",
           STATS_FETCH(ctx, cyc_rx),
@@ -260,7 +288,7 @@ int slowpath_main(void)
       startwait = 0;
     }
 
-    if (cur_ts - last_print >= 1000000) {
+    if (cur_ts - last_print >= 10000000) {
       if (!config.quiet) {
         printf("stats: drops=%"PRIu64" k_rexmit=%"PRIu64" ecn=%"PRIu64" acks=%"
             PRIu64"\n", kstats.drops, kstats.kernel_rexmit, kstats.ecn_marked,
