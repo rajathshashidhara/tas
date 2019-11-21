@@ -153,7 +153,7 @@ int qman_thread_init(struct dataplane_context *ctx)
   {
     unsigned num_elements = (config.ps_timewheel_max_us/
                               config.ps_timewheel_resolution_us);
-    t->timewheel_granularity_us = config.ps_timewheel_resolution_us;
+    t->timewheel_granularity_ns = config.ps_timewheel_resolution_us * 1000ull;
     t->timewheel_count = 0;
     t->timewheel_len = num_elements;
     t->timewheel_head_idx = 0;
@@ -507,7 +507,14 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   uint32_t ts, max_ts, max_timewheel_ts;
   assert((q->flags & (FLAG_INTIMEWHEEL | FLAG_INNOLIMITL)) == 0);
 
-  dprintf("queue_activate_skiplist: t=%p q=%p idx=%u avail=%u rate=%u \
+  static uint64_t timewheel_max_time = 0;
+  if (UNLIKELY(timewheel_max_time == 0))
+  {
+    timewheel_max_time = (t->timewheel_len * t->timewheel_granularity_ns);
+  }
+
+
+  dprintf("queue_activate_timewheel: t=%p q=%p idx=%u avail=%u rate=%u \
             flags=%x ts_virt=%u next_ts=%u\n",
             t, q, q_idx, q->avail, q->rate, q->flags,
             t->ts_virtual, q->next_ts);
@@ -518,7 +525,7 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
    */
   ts = q->next_ts;
   max_ts = queue_new_ts(t, q, q->max_chunk);
-  max_timewheel_ts = t->ts_virtual + (t->timewheel_len * t->timewheel_granularity_us * 1000ull);
+  max_timewheel_ts = t->ts_virtual + timewheel_max_time;
   if (timestamp_lessthaneq(t, max_timewheel_ts, max_ts))
   {
     max_ts = max_timewheel_ts;
@@ -528,9 +535,9 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   } else if (!timestamp_lessthaneq(t, ts, max_ts)) {
     ts = q->next_ts = max_ts;
   }
-  q->next_ts = ts % (t->timewheel_granularity_us * 1000ull);
+  q->next_ts = ts % t->timewheel_granularity_ns;
 
-  uint32_t pos = (rel_time(t->ts_virtual, q->next_ts)) / (t->timewheel_granularity_us * 1000ull);
+  uint32_t pos = (rel_time(t->ts_virtual, q->next_ts)) / (t->timewheel_granularity_ns);
   pos = (t->timewheel_head_idx + pos) % t->timewheel_len;
 
   list_add_tail(QUEUE_TO_LIST(t->timewheel[pos]), QUEUE_TO_LIST(q));
@@ -548,9 +555,9 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
 
   /* maximum virtual time stamp that can be reached */
   max_vts = t->ts_virtual + (cur_ts - t->ts_real);
-  max_vts = max_vts % (t->timewheel_granularity_us * 1000ull);
+  max_vts = max_vts % t->timewheel_granularity_ns;
 
-  cur_vts = t->ts_virtual % (t->timewheel_granularity_us * 1000ull);
+  cur_vts = t->ts_virtual % t->timewheel_granularity_ns;
   idx = t->timewheel_head_idx;
   for (cnt = 0; cnt < num;) {
     if (!timestamp_lessthaneq(t, cur_vts, max_vts))
@@ -590,7 +597,7 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
       break;
     }
 
-    cur_vts += (t->timewheel_granularity_us);
+    cur_vts += t->timewheel_granularity_ns;
     idx++;
     idx = idx % t->timewheel_len;
   }
