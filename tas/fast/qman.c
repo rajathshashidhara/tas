@@ -501,6 +501,12 @@ static inline uint8_t queue_level(struct qman_thread *t)
 
 /*****************************************************************************/
 /* Managing timewheel queues */
+
+static inline unsigned timestamp_rounddown(uint32_t timestamp, uint64_t granularity)
+{
+  return (timestamp - (timestamp % granularity));
+}
+
 static inline void queue_activate_timewheel(struct qman_thread *t,
     struct queue *q, uint32_t q_idx)
 {
@@ -512,7 +518,6 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   {
     timewheel_max_time = (t->timewheel_len * t->timewheel_granularity_ns);
   }
-
 
   dprintf("queue_activate_timewheel: t=%p q=%p idx=%u avail=%u rate=%u \
             flags=%x ts_virt=%u next_ts=%u\n",
@@ -535,10 +540,12 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   } else if (!timestamp_lessthaneq(t, ts, max_ts)) {
     ts = q->next_ts = max_ts;
   }
-  q->next_ts = ts % t->timewheel_granularity_ns;
+  q->next_ts = timestamp_rounddown(ts, t->timewheel_granularity_ns);
 
   uint32_t pos = (rel_time(t->ts_virtual, q->next_ts)) / (t->timewheel_granularity_ns);
-  pos = (t->timewheel_head_idx + pos) % t->timewheel_len;
+  pos = (t->timewheel_head_idx + pos);
+  if (pos >= t->timewheel_len)
+    pos -= t->timewheel_len;
 
   list_add_tail(QUEUE_TO_LIST(t->timewheel[pos]), QUEUE_TO_LIST(q));
 
@@ -554,10 +561,9 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
   struct queue *q;
 
   /* maximum virtual time stamp that can be reached */
-  max_vts = t->ts_virtual + (cur_ts - t->ts_real);
-  max_vts = max_vts % t->timewheel_granularity_ns;
+  max_vts = t->ts_virtual + timestamp_rounddown(cur_ts - t->ts_real, t->timewheel_granularity_ns);
 
-  cur_vts = t->ts_virtual % t->timewheel_granularity_ns;
+  cur_vts = t->ts_virtual;
   idx = t->timewheel_head_idx;
   for (cnt = 0; cnt < num;) {
     if (!timestamp_lessthaneq(t, cur_vts, max_vts))
@@ -599,7 +605,8 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
 
     cur_vts += t->timewheel_granularity_ns;
     idx++;
-    idx = idx % t->timewheel_len;
+    if (idx >= t->timewheel_len)
+      idx -= t->timewheel_len;
   }
 
   t->ts_real = cur_ts;
