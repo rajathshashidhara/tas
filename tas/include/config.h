@@ -39,6 +39,14 @@ enum config_cc_algorithm {
   CONFIG_CC_CONST_RATE,
 };
 
+/** Supported packet schedulers. */
+enum config_pkt_scheduler {
+  /** FQ pacing (uses Skiplist to approximate RB-tree) */
+  CONFIG_PS_FQ,
+  /** Carousel (Timewheel based implementation) */
+  CONFIG_PS_CAROUSEL,
+};
+
 /** Struct containing the parsed configuration parameters */
 struct configuration {
   /** Kernel nic receive queue length. */
@@ -109,6 +117,12 @@ struct configuration {
   uint32_t cc_timely_min_rtt;
   /** CC timely: minimal rate to use */
   uint32_t cc_timely_min_rate;
+  /** Packet scheduler */
+  enum config_pkt_scheduler scheduler;
+  /** Carousel: Timewheel resolution */
+  uint32_t ps_timewheel_resolution_us;
+  /** Carousel: Timewheel max-time duration */
+  uint32_t ps_timewheel_max_us;
   /** FP: maximal number of cores used */
   uint32_t fp_cores_max;
   /** FP: interrupts (blocking) enabled */

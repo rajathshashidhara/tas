@@ -36,6 +36,7 @@
 #include <rte_cycles.h>
 
 #include <utils.h>
+#include <utils_log.h>
 
 #include "internal.h"
 
@@ -43,6 +44,7 @@
 
 #define FLAG_INSKIPLIST 1
 #define FLAG_INNOLIMITL 2
+#define FLAG_INTIMEWHEEL 3
 
 /** Skiplist: bits per level */
 #define SKIPLIST_BITS 3
@@ -55,8 +57,15 @@
 
 /** Queue state */
 struct queue {
-  /** Next pointers for levels in skip list */
-  uint32_t next_idxs[QMAN_SKIPLIST_LEVELS];
+  union {
+    struct {
+      /** Links in doubly linked list */
+      struct queue* list_next;
+      struct queue* list_prev;
+    } __attribute__((packed));
+    /** Next pointers for levels in skip list */
+    uint32_t next_idxs[QMAN_SKIPLIST_LEVELS];
+  } __attribute__((packed));
   /** Time stamp */
   uint32_t next_ts;
   /** Assigned Rate */
@@ -110,11 +119,29 @@ int qman_thread_init(struct dataplane_context *ctx)
     return -1;
   }
 
-  for (i = 0; i < QMAN_SKIPLIST_LEVELS; i++) {
-    t->head_idx[i] = IDXLIST_INVAL;
+  if (config.scheduler == CONFIG_PS_FQ)
+  {
+    for (i = 0; i < QMAN_SKIPLIST_LEVELS; i++) {
+      t->head_idx[i] = IDXLIST_INVAL;
+    }
+    utils_rng_init(&t->rng, RNG_SEED * ctx->id + ctx->id);
   }
+  else if (config.scheduler == CONFIG_PS_CAROUSEL)
+  {
+    unsigned num_elements = (config.ps_timewheel_max_us/
+                              config.ps_timewheel_resolution_us);
+    t->timewheel_granularity_us = config.ps_timewheel_resolution_us;
+    t->timewheel_len = num_elements;
+    t->timewheel_head_idx = 0;
+    if ((t->timewheel = calloc(1, sizeof(struct queue*) * num_elements))
+      == NULL)
+    {
+      TAS_LOG(ERR, FAST_QMAN, "%s(): timewheel malloc failed\n", __func__);
+      return -1;
+    }
+  }
+
   t->nolimit_head_idx = t->nolimit_tail_idx = IDXLIST_INVAL;
-  utils_rng_init(&t->rng, RNG_SEED * ctx->id + ctx->id);
 
   t->ts_virtual = 0;
   t->ts_real = timestamp();
@@ -432,6 +459,20 @@ static inline uint8_t queue_level(struct qman_thread *t)
 {
   uint8_t x = (__builtin_ffs(utils_rng_gen32(&t->rng)) - 1) / SKIPLIST_BITS;
   return (x < QMAN_SKIPLIST_LEVELS ? x : QMAN_SKIPLIST_LEVELS - 1);
+}
+
+/*****************************************************************************/
+/* Managing timewheel queues */
+static inline void queue_activate_timewheel(struct qman_thread *t,
+    struct queue *q, uint32_t q_idx)
+{
+
+}
+
+static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
+    unsigned num, unsigned *q_ids, uint16_t *q_bytes)
+{
+  return 0;
 }
 
 /*****************************************************************************/
