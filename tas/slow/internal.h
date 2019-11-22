@@ -595,6 +595,8 @@ struct listener {
   uint16_t port;
   /** Flags: see #nicif_connection_flags */
   uint32_t flags;
+  /** Lock */
+  volatile uint32_t lock;
 };
 
 /** List of tcp connections */

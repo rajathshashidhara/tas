@@ -121,6 +121,7 @@ STATIC_ASSERT(sizeof(struct flextcp_pl_ktx) == 64, ktx_size);
 
 #define FLEXTCP_PL_ARX_INVALID    0x0
 #define FLEXTCP_PL_ARX_CONNUPDATE 0x1
+#define FLEXTCP_PL_ARX_LISTENNEWCONN  0x2
 
 #define FLEXTCP_PL_ARX_FLRXDONE  0x1
 
@@ -133,10 +134,17 @@ struct flextcp_pl_arx_connupdate {
   uint8_t flags;
 } __attribute__((packed));
 
+struct flextcp_pl_arx_listenconn {
+  uint64_t opaque;
+  uint32_t remote_ip;
+  uint16_t remote_port;
+} __attribute__((packed));
+
 /** Application RX queue entry */
 struct flextcp_pl_arx {
   union {
     struct flextcp_pl_arx_connupdate connupdate;
+    struct flextcp_pl_arx_listenconn listennewconn;
     uint8_t raw[31];
   } __attribute__((packed)) msg;
   volatile uint8_t type;

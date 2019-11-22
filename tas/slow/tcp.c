@@ -36,8 +36,10 @@
 #include <packet_defs.h>
 #include <utils.h>
 #include <utils_rng.h>
+#include <utils_sync.h>
 #include <slowpath.h>
 #include "internal.h"
+#include "appif.h"
 
 #define TCP_MSS 1460
 #define TCP_HTSIZE 4096
@@ -319,7 +321,7 @@ int tcp_listen(struct app_context *ctx, uint64_t opaque, uint16_t local_port,
     ports[local_port] = (uintptr_t) lst | PORT_TYPE_LISTEN;
   } else {
     lm->ls[lm->num] = lst;
-    lm->num++;
+    __atomic_add_fetch(&lm->num, 1, __ATOMIC_SEQ_CST);
     if (lm_new != NULL) {
       lm = lm_new;
       ports[local_port] = (uintptr_t) lm | PORT_TYPE_LMULTI;
@@ -828,12 +830,65 @@ static struct listener *listener_lookup(const struct pkt_tcp *p)
     lm = (struct listen_multi *) (ports[local_port] & ~PORT_TYPE_MASK);
     hash = hash_64_to_32(((uint64_t) f_beui32(p->ip.src) << 32) |
         ((uint32_t) f_beui16(p->tcp.src) << 16) | local_port);
-    return lm->ls[hash % lm->num];
-  } else {
-    return NULL;
+    
+    size_t lnum;
+    __atomic_load(&lm->num, &lnum, __ATOMIC_SEQ_CST);
+
+    return lm->ls[hash % lnum];
   }
 
-  return (struct listener *) (ports[local_port] & ~PORT_TYPE_MASK);
+  return NULL;
+}
+
+int handle_syn_packet(const struct pkt_tcp *p,
+  uint32_t fn_core, uint16_t flow_group, uint64_t* lopaque, uint16_t* dbid)
+{
+  struct listener* l = listener_lookup(p);
+  struct backlog_slot *bls;
+  uint16_t len;
+
+  /* make sure packet is not too long */
+  len = sizeof(p->eth) + f_beui16(p->ip.len);
+  if (UNLIKELY(len > sizeof(bls->buf))) {
+    fprintf(stderr, "listener_packet: SYN larger than backlog buffer, "
+        "dropping\n");
+    goto drop;
+  }
+
+  util_spin_lock(&l->lock);
+
+  if (l->backlog_len == l->backlog_used) {
+    fprintf(stderr, "listener_packet: backlog queue full\n");
+    util_spin_unlock(&l->lock);  
+    goto drop;
+  }
+
+  // TODO: Handle mulitple pending SYN packets from same source <IP, PORT>
+  uint32_t bp = l->backlog_pos + l->backlog_used;
+  if (bp >= l->backlog_len) {
+    bp -= l->backlog_len;
+  }
+
+  l->backlog_used++;
+  util_spin_unlock(&l->lock);
+
+  /* copy packet into backlog buffer */
+  l->backlog_cores[bp] = fn_core;
+  l->backlog_fgs[bp] = flow_group;
+  bls = l->backlog_ptrs[bp];
+  memcpy(bls->buf, p, len);
+  bls->len = len;
+
+  // TODO: Handle pending accepts !
+  *dbid = l->ctx->doorbell->id;
+  *lopaque = l->opaque;
+  return 0;
+
+drop:
+  return 1;
+
+// send_to_kernel:
+//   return -1;
 }
 
 static void listener_packet(struct listener *l, const struct pkt_tcp *p,
@@ -859,6 +914,14 @@ static void listener_packet(struct listener *l, const struct pkt_tcp *p,
     return;
   }
 
+  util_spin_lock(&l->lock);
+
+  if (l->backlog_len == l->backlog_used) {
+    fprintf(stderr, "listener_packet: backlog queue full\n");
+    util_spin_unlock(&l->lock);  
+    return;
+  }
+
   /* make sure we don't already have this 4-tuple */
   for (n = 0, bp = l->backlog_pos; n < l->backlog_used;
       n++, bp = (bp + 1) % l->backlog_len)
@@ -870,20 +933,18 @@ static void listener_packet(struct listener *l, const struct pkt_tcp *p,
         f_beui16(p->tcp.src) == f_beui16(bl_p->tcp.src) &&
         f_beui16(p->tcp.dest) == f_beui16(bl_p->tcp.dest))
     {
+      util_spin_unlock(&l->lock);
       return;
     }
   }
-
-  if (l->backlog_len == l->backlog_used) {
-    fprintf(stderr, "listener_packet: backlog queue full\n");
-    return;
-  }
-
 
   bp = l->backlog_pos + l->backlog_used;
   if (bp >= l->backlog_len) {
     bp -= l->backlog_len;
   }
+
+  l->backlog_used++;
+  util_spin_unlock(&l->lock);
 
   /* copy packet into backlog buffer */
   l->backlog_cores[bp] = fn_core;
@@ -891,8 +952,6 @@ static void listener_packet(struct listener *l, const struct pkt_tcp *p,
   bls = l->backlog_ptrs[bp];
   memcpy(bls->buf, p, len);
   bls->len = len;
-
-  l->backlog_used++;
 
   appif_listen_newconn(l, f_beui32(p->ip.src), f_beui16(p->tcp.src));
 
@@ -969,11 +1028,15 @@ static void listener_accept(struct listener *l)
   nbqueue_enq(&conn_async_q, &c->comp.el);
 
 out:
+  util_spin_unlock(&l->lock);
+
   l->backlog_used--;
   l->backlog_pos++;
   if (l->backlog_pos >= l->backlog_len) {
     l->backlog_pos -= l->backlog_len;
   }
+
+  util_spin_unlock(&l->lock);
 }
 
 static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,

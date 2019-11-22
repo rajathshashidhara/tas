@@ -274,6 +274,62 @@ void fast_flows_packet_pfbufs(struct dataplane_context *ctx,
   }
 }
 
+extern int handle_syn_packet(const struct pkt_tcp *p,
+  uint32_t fn_core, uint16_t flow_group, uint64_t* lopaque, uint16_t* dbid);
+
+static inline int is_tcp_syn(struct network_buf_handle *nbh)
+{
+  struct pkt_tcp *p = network_buf_bufoff(nbh);
+  uint16_t len = network_buf_len(nbh);
+
+  int cond =
+    (len >= sizeof(*p)) &
+    (f_beui16(p->eth.type) == ETH_TYPE_IP) &
+    (p->ip.proto == IP_PROTO_TCP) &
+    (IPH_V(&p->ip) == 4) &
+    (IPH_HL(&p->ip) == 5) &
+    (TCPH_HDRLEN(&p->tcp) >= 5) &
+    (len >= f_beui16(p->ip.len) + sizeof(p->eth)) &
+    ((TCPH_FLAGS(&p->tcp) & (TCP_SYN)) != 0) &
+    ((TCPH_FLAGS(&p->tcp) & (TCP_ACK)) == 0);
+
+  return cond;
+}
+
+int fast_syn_packet(struct dataplane_context *ctx,
+    struct network_buf_handle *nbh)
+{
+  struct pkt_tcp *p = network_buf_bufoff(nbh);
+  uint32_t fn_core = ctx->id;
+  uint16_t flow_group;
+  network_buf_flowgroup(nbh, &flow_group);
+
+  /* if we get syn -> handle it. syn/ack or other flags -> kernel */
+  if (!is_tcp_syn(nbh))
+  {
+    return -1;
+  }
+
+  uint64_t lopaque;
+  uint16_t dbid;
+  int ret = handle_syn_packet(p, fn_core, flow_group, &lopaque, &dbid);
+  /* Drop */
+  if (ret == 1)
+    return 0;
+  else if (ret == 0)
+  {
+    uint16_t id = ctx->arx_num++;
+
+    ctx->arx_ctx[id] = dbid;
+    ctx->arx_cache[id].type = FLEXTCP_PL_ARX_LISTENNEWCONN;
+    ctx->arx_cache[id].msg.listennewconn.opaque = lopaque;
+    ctx->arx_cache[id].msg.listennewconn.remote_ip = f_beui32(p->ip.src);
+    ctx->arx_cache[id].msg.listennewconn.remote_port = f_beui16(p->tcp.src);
+  }
+
+  return ret;
+}
+
 /* Received packet */
 int fast_flows_packet(struct dataplane_context *ctx,
     struct network_buf_handle *nbh, void *fsp, struct tcp_opts *opts,

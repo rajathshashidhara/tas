@@ -455,6 +455,9 @@ static int fastpath_poll_vec(struct flextcp_context *ctx, int num,
       if (t == FLEXTCP_PL_ARX_CONNUPDATE) {
         j = event_arx_connupdate(ctx, &arx->msg.connupdate, events + i,
             num - i, q);
+      } else if (t == FLEXTCP_PL_ARX_LISTENNEWCONN) {
+        event_kappin_listen_newconn((void*) &arx->msg.listennewconn, events + i);
+        j = 1;
       } else {
         j = 0;
         fprintf(stderr, "flextcp_context_poll: kout type=%u head=%x\n",
