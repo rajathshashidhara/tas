@@ -120,6 +120,12 @@ static inline unsigned poll_skiplist(struct qman_thread *t, uint32_t cur_ts,
     unsigned num, unsigned *q_ids, uint16_t *q_bytes);
 static inline uint8_t queue_level(struct qman_thread *t);
 
+/** Add queue to timewheel */
+static inline void queue_activate_timewheel(struct qman_thread *t,
+    struct queue *q, uint32_t q_idx);
+static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
+    unsigned num, unsigned *q_ids, uint16_t *q_bytes);
+
 static inline void queue_fire(struct qman_thread *t,
     struct queue *q, uint32_t idx, unsigned *q_id, uint16_t *q_bytes);
 static inline void queue_activate(struct qman_thread *t, struct queue *q,
@@ -201,6 +207,7 @@ uint32_t qman_timestamp(uint64_t cycles)
 
 uint32_t qman_next_ts(struct qman_thread *t, uint32_t cur_ts)
 {
+  uint32_t idx;
   uint32_t ts = timestamp();
   uint32_t ret_ts = t->ts_virtual + (ts - t->ts_real);
 
@@ -210,17 +217,26 @@ uint32_t qman_next_ts(struct qman_thread *t, uint32_t cur_ts)
     return 0;
   }
 
-  uint32_t idx = t->head_idx[0];
-  if(idx != IDXLIST_INVAL) {
-    struct queue *q = &t->queues[idx];
+  switch (config.scheduler)
+  {
+  case CONFIG_PS_CAROUSEL:
+    return 0;
+  case CONFIG_PS_FQ:
+    idx = t->head_idx[0];
+    if(idx != IDXLIST_INVAL) {
+      struct queue *q = &t->queues[idx];
 
-    if(timestamp_lessthaneq(t, q->next_ts, ret_ts)) {
-      // Fired in the past - immediate timeout
-      return 0;
-    } else {
-      // Timeout in the future - return difference
-      return rel_time(ret_ts, q->next_ts) / 1000;
+      if(timestamp_lessthaneq(t, q->next_ts, ret_ts)) {
+        // Fired in the past - immediate timeout
+        return 0;
+      } else {
+        // Timeout in the future - return difference
+        return rel_time(ret_ts, q->next_ts) / 1000;
+      }
     }
+    break;
+  default:
+    break;
   }
 
   // List empty - no timeout
@@ -236,9 +252,29 @@ int qman_poll(struct qman_thread *t, unsigned num, unsigned *q_ids,
   /* poll nolimit list and skiplist alternating the order between */
   if (t->nolimit_first) {
     x = poll_nolimit(t, ts, num, q_ids, q_bytes);
-    y = poll_skiplist(t, ts, num - x, q_ids + x, q_bytes + x);
+    switch(config.scheduler)
+    {
+      case CONFIG_PS_CAROUSEL:
+        y = poll_timewheel(t, ts, num - x, q_ids + x, q_bytes + x);
+        break;
+      case CONFIG_PS_FQ:
+        y = poll_skiplist(t, ts, num - x, q_ids + x, q_bytes + x);
+        break;
+      default:
+        abort();
+    }
   } else {
-    x = poll_skiplist(t, ts, num, q_ids, q_bytes);
+    switch(config.scheduler)
+    {
+      case CONFIG_PS_CAROUSEL:
+        x = poll_timewheel(t, ts, num, q_ids, q_bytes);
+        break;
+      case CONFIG_PS_FQ:
+        x = poll_skiplist(t, ts, num, q_ids, q_bytes);
+        break;
+      default:
+        abort();
+    }
     y = poll_nolimit(t, ts, num - x, q_ids + x, q_bytes + x);
   }
   t->nolimit_first = !t->nolimit_first;
