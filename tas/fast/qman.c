@@ -597,15 +597,13 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
   struct queue *q;
 
   /* maximum virtual time stamp that can be reached */
-  max_vts = t->ts_virtual + timestamp_rounddown(cur_ts - t->ts_real, t->timewheel_granularity_ns);
+  max_vts = cur_ts;
 
   cur_vts = t->ts_virtual;
   idx = t->timewheel_head_idx;
   for (cnt = 0; cnt < num;) {
     if (!timestamp_lessthaneq(t, cur_vts, max_vts))
     {
-      t->ts_virtual = cur_vts;
-      t->timewheel_head_idx = idx;
       break;
     }
 
@@ -631,11 +629,11 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
       }
     }
 
+    t->ts_virtual = cur_vts;
+    t->timewheel_head_idx = idx;
+
     if (cnt == num)
     {
-      t->ts_virtual = cur_vts;
-      t->timewheel_head_idx = idx;
-
       break;
     }
 
@@ -697,9 +695,12 @@ static inline uint32_t timestamp(void)
   uint64_t cycles = rte_get_tsc_cycles();
 
   if (freq == 0)
+  {
     freq = rte_get_tsc_hz();
+    freq /= 1000000000ULL;
+    assert(freq != 0);  /*> Atleast 1GHz processor required */
+  }
 
-  cycles *= 1000000000ULL;
   cycles /= freq;
   return cycles;
 }
