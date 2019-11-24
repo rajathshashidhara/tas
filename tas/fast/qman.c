@@ -546,13 +546,14 @@ static inline unsigned timestamp_rounddown(uint32_t timestamp, uint64_t granular
 static inline void queue_activate_timewheel(struct qman_thread *t,
     struct queue *q, uint32_t q_idx)
 {
-  uint32_t ts, max_ts, max_timewheel_ts;
+  uint32_t ts, max_ts;
   assert((q->flags & (FLAG_INTIMEWHEEL | FLAG_INNOLIMITL)) == 0);
 
   static uint64_t timewheel_max_time = 0;
   if (UNLIKELY(timewheel_max_time == 0))
   {
     timewheel_max_time = (t->timewheel_len * t->timewheel_granularity_ns);
+    TAS_LOG(ERR, FAST_QMAN, "Timewheel max time = %lu\n", timewheel_max_time);
   }
 
   dprintf("queue_activate_timewheel: t=%p q=%p idx=%u avail=%u rate=%u \
@@ -566,11 +567,11 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
    */
   ts = q->next_ts;
   max_ts = queue_new_ts(t, q, q->max_chunk);
-  max_timewheel_ts = t->ts_virtual + timewheel_max_time;
-  if (timestamp_lessthaneq(t, max_timewheel_ts, max_ts))
-  {
-    max_ts = max_timewheel_ts;
-  }
+  //max_timewheel_ts = t->ts_virtual + timewheel_max_time;
+  //if (rel_time(t, max_ts, ts) >= timewheel_max_time)
+  //{
+  //  max_ts = t->ts_virtual + timewheel_max_time;
+  //}
   if (timestamp_lessthaneq(t, ts, t->ts_virtual)) {
     ts = q->next_ts = t->ts_virtual;
   } else if (!timestamp_lessthaneq(t, ts, max_ts)) {
@@ -583,6 +584,7 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   if (pos >= t->timewheel_len)
     pos -= t->timewheel_len;
 
+  TAS_LOG(ERR, FAST_QMAN, "queue_activate_timewheel: pos=%u ts_virtual=%u next_ts=%u\n", pos, t->ts_virtual, q->next_ts);
   list_add_tail(QUEUE_TO_LIST(t->timewheel[pos]), QUEUE_TO_LIST(q));
 
   t->timewheel_count++;
@@ -597,6 +599,7 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
   struct queue *q;
 
   /* maximum virtual time stamp that can be reached */
+  //max_vts = t->ts_virtual + (cur_ts - t->ts_real);
   max_vts = cur_ts;
 
   cur_vts = t->ts_virtual;
@@ -618,6 +621,7 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
 
       dprintf("poll_timehweel: t=%p q=%p idx=%u avail=%u rate=%u flags=%x\n", t, q, idx, q->avail, q->rate, q->flags);
 
+      TAS_LOG(ERR, FAST_QMAN, "poll_timehweel: q=%p idx=%u cnt=%u\n", q, idx, cnt);
       queue_fire(t, q, idx, q_ids + cnt, q_bytes + cnt);
       list_remove(bucket->next);
       t->timewheel_count--;
@@ -646,7 +650,7 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
   t->ts_real = cur_ts;
   return cnt;
 }
-
+//
 /*****************************************************************************/
 
 static inline void queue_fire(struct qman_thread *t,
@@ -685,7 +689,10 @@ static inline void queue_activate(struct qman_thread *t, struct queue *q,
   if (q->rate == 0) {
     queue_activate_nolimit(t, q, idx);
   } else {
-    queue_activate_skiplist(t, q, idx);
+    if (config.scheduler == CONFIG_PS_CAROUSEL)
+      queue_activate_timewheel(t, q, idx);
+    else
+      queue_activate_skiplist(t, q, idx);
   }
 }
 
