@@ -538,7 +538,7 @@ static inline uint8_t queue_level(struct qman_thread *t)
 /*****************************************************************************/
 /* Managing timewheel queues */
 
-static inline unsigned timestamp_rounddown(uint32_t timestamp, uint64_t granularity)
+static inline uint32_t timestamp_rounddown(uint32_t timestamp, uint64_t granularity)
 {
   return (timestamp - (timestamp % granularity));
 }
@@ -580,6 +580,7 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   q->next_ts = timestamp_rounddown(ts, t->timewheel_granularity_ns);
 
   uint32_t pos = (rel_time(q->next_ts, t->ts_virtual)) / (t->timewheel_granularity_ns);
+  fprintf(stderr, "Pos %u\n", pos);
   pos = (t->timewheel_head_idx + pos);
   if (pos >= t->timewheel_len)
     pos -= t->timewheel_len;
