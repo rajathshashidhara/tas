@@ -106,6 +106,7 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
 {
   uint32_t flow_id = queue;
   struct flextcp_pl_flowst *fs = &fp_state->flowst[flow_id];
+  fprintf(stderr, "fast_flows_qman for flow_id=%d flow=%p\n", flow_id, fs);
   uint32_t avail, len, tx_pos, tx_seq, ack, rx_wnd;
   uint16_t new_core;
   uint8_t fin;
@@ -140,6 +141,7 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
   }
 
   /* calculate how much is available to be sent */
+  fprintf(stderr, "Querying avail for fs=%p\n", fs);
   avail = tcp_txavail(fs, NULL);
 
 #if PL_DEBUG_ATX
@@ -182,6 +184,7 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
     fs->tx_next_pos -= fs->tx_len;
   }
   fs->tx_sent += len;
+  fprintf(stderr, "Changing tx_avail from %d to %d\n", fs->tx_avail, fs->tx_avail - len);
   fs->tx_avail -= len;
 
   fin = (fs->rx_base_sp & FLEXNIC_PL_FLOWST_TXFIN) == FLEXNIC_PL_FLOWST_TXFIN &&
@@ -738,6 +741,7 @@ int fast_flows_bump(struct dataplane_context *ctx, uint32_t flow_id,
 
   /* update queue manager queue */
   if (old_avail < new_avail) {
+    fprintf(stderr, "Added to qman via fast_flows_bump\n");
     if (qman_set(&ctx->qman, flow_id, fs->tx_rate, new_avail -
           old_avail, TCP_MSS, QMAN_SET_RATE | QMAN_SET_MAXCHUNK
           | QMAN_ADD_AVAIL) != 0)
@@ -748,6 +752,7 @@ int fast_flows_bump(struct dataplane_context *ctx, uint32_t flow_id,
   }
 
   /* update flow state */
+  fprintf(stderr, "Updating tx_avail from %d to %d for flow=%p\n", fs->tx_avail, tx_avail, fs);
   fs->tx_avail = tx_avail;
   rx_avail_prev = fs->rx_avail;
   fs->rx_avail += rx_bump;

@@ -482,6 +482,8 @@ static unsigned poll_qman(struct dataplane_context *ctx, uint32_t ts)
     //STATS_TS(end_fast_flows_qman);
     //STATS_ATOMIC_ADD(ctx, cyc_fast_flows_qman, );
 
+    if (use != 0)
+      fprintf(stderr, "Didn't send anything!!!\n");
     if (use == 0)
      off++;
   }

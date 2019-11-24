@@ -87,6 +87,8 @@ int fast_appctx_poll_bump(struct dataplane_context *ctx, void *pqe,
   struct flextcp_pl_atx *atx = pqe;
   int ret;
 
+  fprintf(stderr, "Calling fast_flows_bump for flow_id=%u\n",
+    atx->msg.connupdate.flow_id);
   ret = fast_flows_bump(ctx, atx->msg.connupdate.flow_id,
       atx->msg.connupdate.bump_seq, atx->msg.connupdate.rx_bump,
       atx->msg.connupdate.tx_bump, atx->msg.connupdate.flags, nbh, ts);
