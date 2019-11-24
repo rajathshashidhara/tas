@@ -538,7 +538,7 @@ static inline uint8_t queue_level(struct qman_thread *t)
 /*****************************************************************************/
 /* Managing timewheel queues */
 
-static inline uint32_t timestamp_rounddown(uint32_t timestamp, uint64_t granularity)
+static inline uint32_t timestamp_rounddown(uint32_t timestamp, uint32_t granularity)
 {
   return (timestamp - (timestamp % granularity));
 }
