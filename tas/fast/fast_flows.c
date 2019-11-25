@@ -106,7 +106,7 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
 {
   uint32_t flow_id = queue;
   struct flextcp_pl_flowst *fs = &fp_state->flowst[flow_id];
-  fprintf(stderr, "fast_flows_qman for flow_id=%d flow=%p\n", flow_id, fs);
+  //fprintf(stderr, "fast_flows_qman for flow_id=%d flow=%p\n", flow_id, fs);
   uint32_t avail, len, tx_pos, tx_seq, ack, rx_wnd;
   uint16_t new_core;
   uint8_t fin;

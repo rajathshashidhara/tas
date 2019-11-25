@@ -396,7 +396,7 @@ static inline unsigned poll_nolimit(struct qman_thread *t, uint32_t cur_ts,
 static inline uint32_t queue_new_ts(struct qman_thread *t, struct queue *q,
     uint32_t bytes)
 {
-  return t->ts_virtual + ((uint64_t) bytes * 8 * 1000000) / q->rate;
+  return t->ts_virtual + ((uint32_t) bytes * 8 * 1000000) / q->rate;
 }
 
 /** Add queue to the skip list list */
@@ -538,9 +538,13 @@ static inline uint8_t queue_level(struct qman_thread *t)
 /*****************************************************************************/
 /* Managing timewheel queues */
 
-static inline uint32_t timestamp_rounddown(uint32_t timestamp, uint32_t granularity)
+static inline uint32_t timestamp_roundup(uint32_t timestamp, uint32_t granularity)
 {
-  return (timestamp - (timestamp % granularity));
+  // Two reasons to increment by granularity -
+  // Without it we would be rounding down and giving a slightly higher rate than intended. By rounding up we are
+  // giving a slightly lower rate than intended, with the added advantage that re-activating a queue while performing
+  // poll_timewheel will not add it to the current timewheel head index. 
+  return (timestamp - (timestamp % granularity)) + granularity;
 }
 
 static inline void queue_activate_timewheel(struct qman_thread *t,
@@ -577,10 +581,18 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   } else if (!timestamp_lessthaneq(t, ts, max_ts)) {
     ts = q->next_ts = max_ts;
   }
-  q->next_ts = timestamp_rounddown(ts, t->timewheel_granularity_ns);
+  q->next_ts = timestamp_roundup(ts, t->timewheel_granularity_ns);
 
-  uint32_t pos = (rel_time(q->next_ts, t->ts_virtual)) / (t->timewheel_granularity_ns);
-  fprintf(stderr, "Pos %u\n", pos);
+  int64_t diff = rel_time(t->ts_virtual, q->next_ts);
+  //fprintf(stderr, "rel_time(q->next_ts, t->ts_virtual) %"PRId64"\n", diff);
+
+  if(diff < 0)
+  {
+    fprintf(stderr, "rel_time(q->next_ts, t->ts_virtual) less than 0 for %u - %u\n", q->next_ts, t->ts_virtual);
+  }
+  
+  uint32_t pos = diff / (t->timewheel_granularity_ns);
+  //fprintf(stderr, "Pos %u\n\n\n", pos);
   pos = (t->timewheel_head_idx + pos);
   if (pos >= t->timewheel_len)
     pos -= t->timewheel_len;
@@ -624,11 +636,13 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
       dprintf("poll_timehweel: t=%p q=%p time_wheel_head_idx=%u avail=%u rate=%u flags=%x q_idx=%u\n",
         t, q, idx, q->avail, q->rate, q->flags);
 
-      TAS_LOG(ERR, FAST_QMAN, "poll_timehweel: q=%p idx=%u cnt=%u\n", q, idx, cnt);
-      queue_fire(t, q, q_idx, q_ids + cnt, q_bytes + cnt);
+      TAS_LOG(ERR, FAST_QMAN, "poll_timehweel: q=%p idx=%u cnt=%u head_idx=%u q_avail=%u max_chunk=%u\n", q, idx, cnt, idx,
+        q->avail, q->max_chunk);
       list_remove(bucket->next);
       t->timewheel_count--;
       cnt++;
+
+      queue_fire(t, q, q_idx, q_ids + cnt, q_bytes + cnt);
 
       if (cnt == num)
       {
