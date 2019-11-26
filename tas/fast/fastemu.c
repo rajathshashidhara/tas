@@ -457,6 +457,8 @@ static unsigned poll_qman(struct dataplane_context *ctx, uint32_t ts)
     return 0;
   }
 
+  //TAS_LOG(ERR, MAIN, "poll_qman: Send %u bytes for flow_id=%u\n", q_bytes[0], q_ids[0]);
+
   STATS_ADD(ctx, qm_total, ret);
 
   for (i = 0; i < ret; i++) {
@@ -482,8 +484,8 @@ static unsigned poll_qman(struct dataplane_context *ctx, uint32_t ts)
     //STATS_TS(end_fast_flows_qman);
     //STATS_ATOMIC_ADD(ctx, cyc_fast_flows_qman, );
 
-    if (use != 0)
-      fprintf(stderr, "Didn't send anything!!!\n");
+    //if (use != 0)
+    //  fprintf(stderr, "Didn't send anything!!!\n");
     if (use == 0)
      off++;
   }

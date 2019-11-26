@@ -686,7 +686,7 @@ static inline void queue_fire(struct qman_thread *t,
     q->next_ts = queue_new_ts(t, q, bytes);
   }
 
-  TAS_LOG(ERR, FAST_QMAN, "queue_fire: q=%p rate=%u virtual_ts=%u next_ts=%u avail=%u\n", q, q->rate, t->ts_virtual, q->next_ts, q->avail);
+  TAS_LOG(ERR, FAST_QMAN, "queue_fire: q=%p q_idx=%u rate=%u virtual_ts=%u next_ts=%u avail=%u\n", q, idx, q->rate, t->ts_virtual, q->next_ts, q->avail);
 
   if (q->avail > 0) {
     queue_activate(t, q, idx);
