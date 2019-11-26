@@ -544,8 +544,8 @@ static int config_defaults(struct configuration *c, char *progname)
   c->cc_timely_beta = 0.8 * UINT32_MAX;
   c->cc_timely_min_rtt = 11;
   c->cc_timely_min_rate = 10000;
-  c->scheduler = CONFIG_PS_CAROUSEL;
-  //c->scheduler = CONFIG_PS_FQ;
+  //c->scheduler = CONFIG_PS_CAROUSEL;
+  c->scheduler = CONFIG_PS_FQ;
   c->ps_timewheel_resolution_us = 1;
   c->ps_timewheel_max_us = 500 * 1000;
   c->fp_cores_max = 1;
