@@ -61,7 +61,7 @@ int dataplane_init(void)
 {
   if (FLEXNIC_INTERNAL_MEM_SIZE < sizeof(struct flextcp_pl_mem)) {
     fprintf(stderr, "dataplane_init: internal flexnic memory size not "
-        "sufficient (got %x, need %zx)\n", FLEXNIC_INTERNAL_MEM_SIZE,
+        "sufficient (got %llx, need %zx)\n", FLEXNIC_INTERNAL_MEM_SIZE,
         sizeof(struct flextcp_pl_mem));
     return -1;
   }
@@ -73,7 +73,7 @@ int dataplane_init(void)
   }
   if (FLEXNIC_PL_FLOWST_NUM > FLEXNIC_NUM_QMQUEUES) {
     fprintf(stderr, "dataplane_init: more flow states than queue manager queues"
-        "(%u > %u)\n", FLEXNIC_PL_FLOWST_NUM, FLEXNIC_NUM_QMQUEUES);
+        "(%u > %llu)\n", FLEXNIC_PL_FLOWST_NUM, FLEXNIC_NUM_QMQUEUES);
     return -1;
   }
 
@@ -131,6 +131,7 @@ void dataplane_loop(struct dataplane_context *ctx)
 
   while (!exited) {
     unsigned n = 0;
+    unsigned ret = 0;
 
     /* count cycles of previous iteration if it was busy */
     prev_cyc = cyc;
@@ -153,16 +154,31 @@ void dataplane_loop(struct dataplane_context *ctx)
     n += poll_qman_fwd(ctx, ts);
 
     STATS_TS(poll_qman_start);
-    n += poll_qman(ctx, ts);
+    ret = poll_qman(ctx, ts);
+    n+=ret;
     STATS_TS(poll_qman_end);
+    
+    if(ret>0)
+    {
+        STATS_ATOMIC_ADD(ctx, cyc_qm_useful, poll_qman_end - poll_qman_start);
+    }
+
     STATS_ATOMIC_ADD(ctx, cyc_qm, poll_qman_end - poll_qman_start);
 
-    n += poll_queues(ctx, ts);
-    STATS_TS(qs);
-    STATS_ATOMIC_ADD(ctx, cyc_qs, qs - poll_qman_end);
+    //n += poll_queues(ctx, ts);
+    ret = poll_queues(ctx, ts);
+    n+=ret;
+    STATS_TS(qs_end);
+    STATS_ATOMIC_ADD(ctx, cyc_qs, qs_end - poll_qman_end);
+
+    if(ret>0)
+    {
+        STATS_ATOMIC_ADD(ctx, cyc_qs_useful,  qs_end - poll_qman_end);
+    }
+
     n += poll_kernel(ctx, ts);
     STATS_TS(sp);
-    STATS_ATOMIC_ADD(ctx, cyc_sp, sp - qs);
+    STATS_ATOMIC_ADD(ctx, cyc_sp, sp - qs_end);
 
     /* flush transmit buffer */
     tx_flush(ctx);
@@ -228,33 +244,58 @@ void dataplane_dump_stats(void)
     if (ctx == NULL)
       continue;
 
-    TAS_LOG(INFO, MAIN, "DP [%u]> (POLL, EMPTY, TOTAL)\n", i);
-    TAS_LOG(INFO, MAIN, "qm=(%"PRIu64",%"PRIu64",%"PRIu64")  \n",
-            STATS_ATOMIC_FETCH(ctx, qm_poll),
-            STATS_ATOMIC_FETCH(ctx, qm_empty),
-            STATS_ATOMIC_FETCH(ctx, qm_total));
-    TAS_LOG(INFO, MAIN, "rx=(%"PRIu64",%"PRIu64",%"PRIu64")  \n",
-            STATS_ATOMIC_FETCH(ctx, rx_poll),
-            STATS_ATOMIC_FETCH(ctx, rx_empty),
-            STATS_ATOMIC_FETCH(ctx, rx_total));
-    TAS_LOG(INFO, MAIN, "qs=(%"PRIu64",%"PRIu64",%"PRIu64")  \n",
-            STATS_ATOMIC_FETCH(ctx, qs_poll),
-            STATS_ATOMIC_FETCH(ctx, qs_empty),
-            STATS_ATOMIC_FETCH(ctx, qs_total));
-    TAS_LOG(INFO, MAIN, "sp=(%"PRIu64",%"PRIu64",%"PRIu64")  \n",
-            STATS_ATOMIC_FETCH(ctx, sp_poll),
-            STATS_ATOMIC_FETCH(ctx, sp_empty),
-            STATS_ATOMIC_FETCH(ctx, sp_total));
-    TAS_LOG(INFO, MAIN, "tx=(%"PRIu64",%"PRIu64",%"PRIu64")  \n",
-            STATS_ATOMIC_FETCH(ctx, tx_poll),
-            STATS_ATOMIC_FETCH(ctx, tx_empty),
-            STATS_ATOMIC_FETCH(ctx, tx_total));
-    TAS_LOG(INFO, MAIN, "cyc=(%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64") \n",
-            STATS_ATOMIC_FETCH(ctx, cyc_qm),
-            STATS_ATOMIC_FETCH(ctx, cyc_rx),
-            STATS_ATOMIC_FETCH(ctx, cyc_qs),
-            STATS_ATOMIC_FETCH(ctx, cyc_sp),
-            STATS_ATOMIC_FETCH(ctx, cyc_tx));
+    uint64_t qm_total = STATS_ATOMIC_FETCH(ctx, qm_total);
+    uint64_t rx_total = STATS_ATOMIC_FETCH(ctx, rx_total);
+    uint64_t qs_total = STATS_ATOMIC_FETCH(ctx, qs_total);
+    uint64_t sp_total = STATS_ATOMIC_FETCH(ctx, sp_total);
+    uint64_t tx_total = STATS_ATOMIC_FETCH(ctx, tx_total);
+
+    uint64_t cyc_qm = STATS_ATOMIC_FETCH(ctx, cyc_qm);
+    uint64_t cyc_qm_useful = STATS_ATOMIC_FETCH(ctx, cyc_qm_useful);
+    uint64_t cyc_rx = STATS_ATOMIC_FETCH(ctx, cyc_rx);
+    uint64_t cyc_qs = STATS_ATOMIC_FETCH(ctx, cyc_qs);
+    uint64_t cyc_qs_useful = STATS_ATOMIC_FETCH(ctx, cyc_qs_useful);
+    uint64_t cyc_sp = STATS_ATOMIC_FETCH(ctx, cyc_sp);
+    uint64_t cyc_tx = STATS_ATOMIC_FETCH(ctx, cyc_tx);
+
+    uint64_t qm_poll = STATS_ATOMIC_FETCH(ctx, qm_poll);
+    uint64_t rx_poll = STATS_ATOMIC_FETCH(ctx, rx_poll);
+    uint64_t qs_poll = STATS_ATOMIC_FETCH(ctx, qs_poll);
+    uint64_t sp_poll = STATS_ATOMIC_FETCH(ctx, sp_poll);
+    uint64_t tx_poll = STATS_ATOMIC_FETCH(ctx, tx_poll);
+
+    uint64_t qm_empty  = STATS_ATOMIC_FETCH(ctx, qm_empty);
+    uint64_t rx_empty  = STATS_ATOMIC_FETCH(ctx, rx_empty);
+    uint64_t qs_empty  = STATS_ATOMIC_FETCH(ctx, qs_empty);
+    uint64_t sp_empty  = STATS_ATOMIC_FETCH(ctx, sp_empty);
+    uint64_t tx_empty  = STATS_ATOMIC_FETCH(ctx, tx_empty);
+
+    TAS_LOG(INFO, MAIN, "DP [%u]> (POLL, EMPTY, TOTAL, CYC/POLL, CYC/TOTAL, EMPTY/POLL)\n", i);
+    TAS_LOG(INFO, MAIN, "qm       =(%"PRIu64",%"PRIu64",%"PRIu64", %lF, %lF, %lF)\n",
+            qm_poll, qm_empty,
+            qm_total, (double) cyc_qm/qm_poll, (double) cyc_qm/qm_total, (double) qm_empty/qm_poll);
+    TAS_LOG(INFO, MAIN, "rx       =(%"PRIu64",%"PRIu64",%"PRIu64", %lF, %lF, %lF)\n",
+            rx_poll, rx_empty,
+            rx_total, (double) cyc_rx/rx_poll, (double) cyc_rx/rx_total, (double) rx_empty/rx_poll);
+    TAS_LOG(INFO, MAIN, "qs       =(%"PRIu64",%"PRIu64",%"PRIu64", %lF, %lF, %lF)\n",
+            qs_poll, qs_empty,
+            qs_total, (double) cyc_qs/qs_poll, (double) cyc_qs/qs_total, (double) qs_empty/qs_poll);
+    TAS_LOG(INFO, MAIN, "sp       =(%"PRIu64",%"PRIu64",%"PRIu64", %lF, %lF, %lF)\n",
+            sp_poll, sp_empty,
+            sp_total, (double) cyc_sp/sp_poll, (double) cyc_sp/sp_total, (double) sp_empty/sp_poll);
+    TAS_LOG(INFO, MAIN, "tx       =(%"PRIu64",%"PRIu64",%"PRIu64", %lF, %lF, %lF)\n",
+            tx_poll, tx_empty,
+            tx_total, (double) cyc_tx/tx_poll, (double) cyc_tx/tx_total, (double) tx_empty/tx_poll);
+    TAS_LOG(INFO, MAIN, "cyc       =(\n\t\t\t\t\t\tcyc_qm = %"PRIu64",\n\t\t\t\t\t\tcyc_qm_useful = %"PRIu64",\n\t\t\t\t\t\tcyc_rx = %"PRIu64",\n\t\t\t\t\t\tcyc_qs = %"PRIu64",\n\t\t\t\t\t\tcyc_qs_useful = %"PRIu64",\n\t\t\t\t\t\tcyc_sp = %"PRIu64",\n\t\t\t\t\t\tcyc_tx = %"PRIu64"\n)\n",
+            cyc_qm, cyc_qm_useful, cyc_rx, cyc_qs, cyc_qs_useful, cyc_sp, cyc_tx);
+
+    uint64_t cyc_total = STATS_ATOMIC_FETCH(ctx, cyc_qm) + STATS_ATOMIC_FETCH(ctx, cyc_rx) + STATS_ATOMIC_FETCH(ctx, cyc_qs) + STATS_ATOMIC_FETCH(ctx, cyc_sp) + STATS_ATOMIC_FETCH(ctx, cyc_tx) + 1;
+    TAS_LOG(INFO, MAIN, "ratio=(%lf, %lf, %lf, %lf, %lf) \n",
+            (double) STATS_ATOMIC_FETCH(ctx, cyc_qm)/cyc_total,
+            (double) STATS_ATOMIC_FETCH(ctx, cyc_rx)/cyc_total,
+            (double) STATS_ATOMIC_FETCH(ctx, cyc_qs)/cyc_total,
+            (double) STATS_ATOMIC_FETCH(ctx, cyc_sp)/cyc_total,
+            (double) STATS_ATOMIC_FETCH(ctx, cyc_tx)/cyc_total);
 
 #ifdef QUEUE_STATS
     TAS_LOG(INFO, MAIN, "slow -> fast (%"PRIu64",%"PRIu64") avg_queuing_delay=%lF\n", 

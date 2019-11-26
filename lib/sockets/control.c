@@ -482,6 +482,11 @@ int tas_accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen,
     newfd = sp->fd;
   }
 
+  if (ns->data.connection.status == SOC_FAILED) {
+      errno = EAGAIN;
+      ret = -1;
+      goto out;
+  }
   /* check if connection is still pending */
   if (ns->data.connection.status == SOC_CONNECTING) {
     flextcp_epoll_clear(s, EPOLLIN);
@@ -498,6 +503,8 @@ int tas_accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen,
     }
   }
 
+  if(ns->data.connection.status != SOC_CONNECTED)
+    fprintf(stderr, "Piyush assertion failed %d\n", ns->data.connection.status);
   /* connection is opened now */
   assert(ns->data.connection.status == SOC_CONNECTED);
 

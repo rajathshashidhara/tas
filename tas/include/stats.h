@@ -69,8 +69,10 @@ struct dataplane_stats
 
   /* Cycles consumed in processing by modules */
   uint64_t stat_cyc_qm;
+  uint64_t stat_cyc_qm_useful;
   uint64_t stat_cyc_rx;
   uint64_t stat_cyc_qs;
+  uint64_t stat_cyc_qs_useful;
   uint64_t stat_cyc_sp;
   uint64_t stat_cyc_tx;
 

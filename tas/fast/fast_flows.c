@@ -623,7 +623,7 @@ unlock:
   new_avail = tcp_txavail(fs, NULL);
   if (new_avail > old_avail) {
     /* update qman queue */
-    TAS_LOG(ERR, MAIN, "qman_set: flow_id=%u\n", flow_id);
+    //TAS_LOG(ERR, MAIN, "qman_set: flow_id=%u\n", flow_id);
     if (qman_set(&ctx->qman, flow_id, fs->tx_rate, new_avail -
           old_avail, TCP_MSS, QMAN_SET_RATE | QMAN_SET_MAXCHUNK
           | QMAN_ADD_AVAIL) != 0)
@@ -824,7 +824,7 @@ void fast_flows_retransmit(struct dataplane_context *ctx, uint32_t flow_id)
 
   /* update queue manager */
   if (new_avail > old_avail) {
-    TAS_LOG(ERR, MAIN, "qman_set: flow_id=%u\n", flow_id);
+    //TAS_LOG(ERR, MAIN, "qman_set: flow_id=%u\n", flow_id);
     if (qman_set(&ctx->qman, flow_id, fs->tx_rate, new_avail - old_avail,
           TCP_MSS, QMAN_SET_RATE | QMAN_SET_MAXCHUNK | QMAN_ADD_AVAIL) != 0)
     {

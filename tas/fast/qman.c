@@ -301,7 +301,7 @@ int qman_set(struct qman_thread *t, uint32_t id, uint32_t rate, uint32_t avail,
       id, rate, avail, max_chunk, qidx, tid);
 
   if (id >= FLEXNIC_NUM_QMQUEUES) {
-    fprintf(stderr, "qman_set: invalid queue id: %u >= %u\n", id,
+    fprintf(stderr, "qman_set: invalid queue id: %u >= %llu\n", id,
         FLEXNIC_NUM_QMQUEUES);
     return -1;
   }

@@ -55,8 +55,8 @@ void network_cleanup(void);
 void *util_create_shmsiszed(const char *name, size_t size, void *addr);
 
 /* should become config options */
-#define FLEXNIC_DMA_MEM_SIZE (1024 * 1024 * 1024)
-#define FLEXNIC_INTERNAL_MEM_SIZE (1024 * 1024 * 32)
-#define FLEXNIC_NUM_QMQUEUES (128 * 1024)
+#define FLEXNIC_DMA_MEM_SIZE (1024 * 1024 * 1024ull)
+#define FLEXNIC_INTERNAL_MEM_SIZE (1024 * 1024 * 32ull)
+#define FLEXNIC_NUM_QMQUEUES (128 * 1024ull)
 
 #endif /* ndef TAS_H_ */
