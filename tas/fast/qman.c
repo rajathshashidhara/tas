@@ -256,6 +256,8 @@ int qman_poll(struct qman_thread *t, unsigned num, unsigned *q_ids,
     {
       case CONFIG_PS_CAROUSEL:
         y = poll_timewheel(t, ts, num - x, q_ids + x, q_bytes + x);
+        if (y>0)
+          TAS_LOG(ERR, MAIN, "qman_poll: nolimit first flow_id=%u and got %u queues\n", q_ids[x], y);
         break;
       case CONFIG_PS_FQ:
         y = poll_skiplist(t, ts, num - x, q_ids + x, q_bytes + x);
@@ -268,6 +270,8 @@ int qman_poll(struct qman_thread *t, unsigned num, unsigned *q_ids,
     {
       case CONFIG_PS_CAROUSEL:
         x = poll_timewheel(t, ts, num, q_ids, q_bytes);
+        if (x>0)
+          TAS_LOG(ERR, MAIN, "qman_poll: nolimit second flow_id=%u and got %u queues\n", q_ids[0], x);
         break;
       case CONFIG_PS_FQ:
         x = poll_skiplist(t, ts, num, q_ids, q_bytes);
@@ -642,9 +646,10 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
         q->avail, q->max_chunk, cur_ts, t->ts_virtual, q->rate);
       list_remove(bucket->next);
       t->timewheel_count--;
-      cnt++;
 
+      TAS_LOG(ERR, MAIN, "poll_timewheel: will fire queue with cnt=%u, q_idx=%u\n", cnt, q_idx);
       queue_fire(t, q, q_idx, q_ids + cnt, q_bytes + cnt);
+      cnt++;
 
       if (cnt == num)
       {
