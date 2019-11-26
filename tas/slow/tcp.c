@@ -411,7 +411,7 @@ int tcp_close(struct connection *conn)
   int tx_c, rx_c;
 
   if (conn->status != CONN_OPEN) {
-    fprintf(stderr, "tcp_close: currently no support for non-opened conns.\n");
+    //fprintf(stderr, "tcp_close: currently no support for non-opened conns.\n");
     return -1;
   }
 
