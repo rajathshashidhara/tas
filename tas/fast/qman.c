@@ -617,14 +617,28 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
   struct queue *q;
 
   /* maximum virtual time stamp that can be reached */
-  //max_vts = t->ts_virtual + (cur_ts - t->ts_real);
-  max_vts = cur_ts;
+  uint32_t time_to_cover = rel_time(t->ts_real, cur_ts);
+  //assert(time_to_cover > 0);
+  max_vts = t->ts_virtual + time_to_cover;
+  //max_vts = cur_ts;
 
   cur_vts = t->ts_virtual;
+
+  if (rel_time(cur_vts, max_vts) < rel_time(cur_vts, cur_ts))
+    max_vts = cur_ts;
+
   idx = t->timewheel_head_idx;
+  //if (!timestamp_lessthaneq(t, cur_vts, max_vts))
+  //{
+  //  TAS_LOG(ERR, FAST_QMAN, "cur_vts=%u cur_ts=%u. cur_ts is claimed to be lesser.\n", cur_vts, cur_ts);
+  //}
+
   for (cnt = 0; cnt < num;) {
     if (!timestamp_lessthaneq(t, cur_vts, max_vts))
     {
+      //if (timestamp_lessthaneq(t, cur_vts, cur_ts))
+      //  continue;
+        //TAS_LOG(ERR, FAST_QMAN, "cur_vts=%u cur_ts=%u. cur_vts could haved moved a bit more!\n", cur_vts, cur_ts);
       break;
     }
 
@@ -653,6 +667,7 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
 
       if (cnt == num)
       {
+        //TAS_LOG(ERR, FAST_QMAN, "Breaking as limit is reached cur_vts=%u cur_ts=%u\n", cur_vts, cur_ts);
         break;
       }
     }
