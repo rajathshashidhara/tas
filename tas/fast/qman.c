@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <unistd.h>
 
 #include <rte_config.h>
@@ -400,7 +401,28 @@ static inline unsigned poll_nolimit(struct qman_thread *t, uint32_t cur_ts,
 static inline uint32_t queue_new_ts(struct qman_thread *t, struct queue *q,
     uint32_t bytes)
 {
-  return t->ts_virtual + (uint32_t) (((uint64_t) bytes * 8 * 1000000) / q->rate);
+  static uint64_t timewheel_max_time = 0;
+  if (UNLIKELY(timewheel_max_time == 0))
+  {
+    if(config.scheduler == CONFIG_PS_CAROUSEL)
+      timewheel_max_time = (t->timewheel_len * t->timewheel_granularity_ns);
+
+    if (timewheel_max_time >= UINT32_MAX/2)
+      timewheel_max_time = UINT32_MAX/2;
+    //TAS_LOG(ERR, FAST_QMAN, "Timewheel max time = %lu\n", timewheel_max_time);
+  }
+
+  uint32_t delta = (uint32_t) (((uint64_t) bytes * 8 * 1000000) / q->rate);
+
+  // TODO: This comparison will slow us down as this function is called always, think of something better.
+  // TODO: Also, cover the case where timewheel_max_time is greater than UINT32_MAX/2. This won't occur for now if
+  // granularity is 1 us with 500000 as len of timewheel. (EDIT: Done)
+
+  // TODO: Remove this check for FQ pacing? In FQ pacing delta should go to a max of UINT32_MAX.
+  if (delta >= timewheel_max_time)
+    delta = timewheel_max_time;
+
+  return t->ts_virtual + delta;
 }
 
 /** Add queue to the skip list list */
@@ -556,12 +578,6 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   uint32_t ts, max_ts;
   assert((q->flags & (FLAG_INTIMEWHEEL | FLAG_INNOLIMITL)) == 0);
 
-  static uint64_t timewheel_max_time = 0;
-  if (UNLIKELY(timewheel_max_time == 0))
-  {
-    timewheel_max_time = (t->timewheel_len * t->timewheel_granularity_ns);
-    //TAS_LOG(ERR, FAST_QMAN, "Timewheel max time = %lu\n", timewheel_max_time);
-  }
 
   dprintf("queue_activate_timewheel: t=%p q=%p idx=%u avail=%u rate=%u \
             flags=%x ts_virt=%u next_ts=%u\n",
@@ -573,14 +589,9 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
    *  - not more than if it just sent max_chunk at the current rate
    */
   ts = q->next_ts;
-  //uint32_t fired_ts = ts;
-  //TAS_LOG(ERR, FAST_QMAN, "queue_activate_timewheel: add next at %u\n", ts);
+  uint32_t fired_ts = ts;
   max_ts = queue_new_ts(t, q, q->max_chunk);
-  //max_timewheel_ts = t->ts_virtual + timewheel_max_time;
-  //if (rel_time(t, max_ts, ts) >= timewheel_max_time)
-  //{
-  //  max_ts = t->ts_virtual + timewheel_max_time;
-  //}
+
   if (timestamp_lessthaneq(t, ts, t->ts_virtual)) {
     ts = q->next_ts = t->ts_virtual;
   } else if (!timestamp_lessthaneq(t, ts, max_ts)) {
@@ -593,11 +604,13 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
 
   if(diff < 0)
   {
-    fprintf(stderr, "rel_time(q->next_ts, t->ts_virtual) less than 0 for %u - %u\n", q->next_ts, t->ts_virtual);
+    TAS_LOG(ERR, FAST_QMAN, "queue_activate_timewheel: fired_ts=%u ts_virtual=%u max_ts=%u\n", fired_ts, t->ts_virtual, max_ts);
+    TAS_LOG(ERR, FAST_QMAN, "queue_activate_timewheel: max_ts calculation max_chunk=%u rate=%u\n", q->max_chunk, q->rate);
+    fprintf(stderr, "rel_time(q->next_ts, t->ts_virtual) less than 0 for %u - %u = %ld\n", q->next_ts, t->ts_virtual, rel_time(t->ts_virtual, q->next_ts));
+    abort();
   }
   
   uint32_t pos = diff / (t->timewheel_granularity_ns);
-  //fprintf(stderr, "Pos %u\n\n\n", pos);
   pos = (t->timewheel_head_idx + pos);
   if (pos >= t->timewheel_len)
     pos -= t->timewheel_len;
