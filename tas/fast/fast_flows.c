@@ -128,7 +128,7 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
     }
 
     /* clear queue manager queue */
-    TAS_LOG(ERR, MAIN, "qman_set: flow_id=%u\n", flow_id);
+    //TAS_LOG(ERR, MAIN, "qman_set: flow_id=%u\n", flow_id);
     if (qman_set(&ctx->qman, flow_id, 0, 0, 0,
           QMAN_SET_RATE | QMAN_SET_MAXCHUNK | QMAN_SET_AVAIL) != 0)
     {
@@ -167,7 +167,7 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
 
   /* if there is no data available, stop */
   if (avail == 0) {
-    TAS_LOG(ERR, MAIN, "fast_flows_qman: No data available for flow=%p\n", fs);
+    //TAS_LOG(ERR, MAIN, "fast_flows_qman: No data available for flow=%p\n", fs);
     ret = -1;
     goto unlock;
   }
@@ -219,7 +219,7 @@ int fast_flows_qman_fwd(struct dataplane_context *ctx,
   avail = tcp_txavail(fs, NULL);
 
   /* re-arm queue manager */
-  TAS_LOG(ERR, MAIN, "qman_set: flow_id=%u\n", flow_id);
+  //TAS_LOG(ERR, MAIN, "qman_set: flow_id=%u\n", flow_id);
   if (qman_set(&ctx->qman, flow_id, fs->tx_rate, avail, TCP_MSS,
         QMAN_SET_RATE | QMAN_SET_MAXCHUNK | QMAN_SET_AVAIL) != 0)
   {
