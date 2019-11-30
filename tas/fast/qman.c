@@ -584,6 +584,14 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   uint32_t ts, max_ts;
   assert((q->flags & (FLAG_INTIMEWHEEL | FLAG_INNOLIMITL)) == 0);
 
+  static uint64_t timewheel_max_time = 0;
+  if (UNLIKELY(timewheel_max_time == 0))
+  {
+    timewheel_max_time = ((t->timewheel_len - 1) * t->timewheel_granularity_ns);
+    if (timewheel_max_time > UINT32_MAX/2) {
+      timewheel_max_time = UINT32_MAX/2;
+    }
+  }
 
   dprintf("queue_activate_timewheel: t=%p q=%p idx=%u avail=%u rate=%u \
             flags=%x ts_virt=%u next_ts=%u\n",
@@ -603,20 +611,18 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   } else if (!timestamp_lessthaneq(t, ts, max_ts)) {
     ts = q->next_ts = max_ts;
   }
-  q->next_ts = timestamp_roundup(ts, t->timewheel_granularity_ns);
 
   int64_t diff = rel_time(t->ts_virtual, q->next_ts);
-  //fprintf(stderr, "rel_time(q->next_ts, t->ts_virtual) %"PRId64"\n", diff);
-
-  if(diff < 0)
-  {
-    TAS_LOG(ERR, FAST_QMAN, "queue_activate_timewheel: fired_ts=%u ts_virtual=%u max_ts=%u\n", fired_ts, t->ts_virtual, max_ts);
-    TAS_LOG(ERR, FAST_QMAN, "queue_activate_timewheel: max_ts calculation max_chunk=%u rate=%u\n", q->max_chunk, q->rate);
-    fprintf(stderr, "rel_time(q->next_ts, t->ts_virtual) less than 0 for %u - %u = %ld\n", q->next_ts, t->ts_virtual, rel_time(t->ts_virtual, q->next_ts));
-    abort();
+  if (UNLIKELY(diff < 0)) {
+    TAS_LOG(ERR, FAST_QMAN, "queue_activate_timewheel: fired_ts=%u ts_virtual=%u max_ts=%u rate=%u\n", fired_ts, t->ts_virtual, max_ts, q->rate);
+    diff = timewheel_max_time;
   }
-  
-  uint32_t pos = diff / (t->timewheel_granularity_ns);
+
+  uint64_t pos = diff / (t->timewheel_granularity_ns);
+
+  if (pos==0)
+    pos++;
+
   pos = (t->timewheel_head_idx + pos);
   if (pos >= t->timewheel_len)
     pos -= t->timewheel_len;
