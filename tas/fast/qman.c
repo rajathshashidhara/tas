@@ -262,8 +262,6 @@ int qman_poll(struct qman_thread *t, unsigned num, unsigned *q_ids,
     {
       case CONFIG_PS_CAROUSEL:
         y = poll_timewheel(t, ts, num - x, q_ids + x, q_bytes + x);
-        //if (y>0)
-          //TAS_LOG(ERR, MAIN, "qman_poll: nolimit first flow_id=%u and got %u queues\n", q_ids[x], y);
         break;
       case CONFIG_PS_FQ:
         y = poll_skiplist(t, ts, num - x, q_ids + x, q_bytes + x);
@@ -276,8 +274,6 @@ int qman_poll(struct qman_thread *t, unsigned num, unsigned *q_ids,
     {
       case CONFIG_PS_CAROUSEL:
         x = poll_timewheel(t, ts, num, q_ids, q_bytes);
-        //if (x>0)
-          //TAS_LOG(ERR, MAIN, "qman_poll: nolimit second flow_id=%u and got %u queues\n", q_ids[0], x);
         break;
       case CONFIG_PS_FQ:
         x = poll_skiplist(t, ts, num, q_ids, q_bytes);
@@ -408,33 +404,6 @@ static inline uint32_t queue_new_ts(struct qman_thread *t, struct queue *q,
 {
   return t->ts_virtual + ((uint64_t) bytes * 8 * 1000000) / q->rate;
 }
-
-//static inline uint32_t queue_new_ts_timewheel(struct qman_thread *t, struct queue *q,
-//    uint32_t bytes)
-//{
-//  static uint64_t timewheel_max_time = 0;
-//  if (UNLIKELY(timewheel_max_time == 0))
-//  {
-//    if(config.scheduler == CONFIG_PS_CAROUSEL)
-//      timewheel_max_time = (t->timewheel_len * t->timewheel_granularity_ns);
-//
-//    if (timewheel_max_time >= UINT32_MAX/2)
-//      timewheel_max_time = UINT32_MAX/2;
-//    //TAS_LOG(ERR, FAST_QMAN, "Timewheel max time = %lu\n", timewheel_max_time);
-//  }
-//
-//  uint32_t delta = (uint32_t) (((uint64_t) bytes * 8 * 1000000) / q->rate);
-//
-//  // TODO: This comparison will slow us down as this function is called always, think of something better.
-//  // TODO: Also, cover the case where timewheel_max_time is greater than UINT32_MAX/2. This won't occur for now if
-//  // granularity is 1 us with 500000 as len of timewheel. (EDIT: Done)
-//
-//  // TODO: Remove this check for FQ pacing? In FQ pacing delta should go to a max of UINT32_MAX.
-//  if (delta >= timewheel_max_time)
-//    delta = timewheel_max_time;
-//
-//  return t->ts_virtual + delta;
-//}
 
 /** Add queue to the skip list list */
 static inline void queue_activate_skiplist(struct qman_thread *t,
@@ -645,7 +614,7 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
   for (cnt = 0; cnt < num;) {
     if (t->timewheel_debt_ns == 0)
     {
-      TAS_LOG(ERR, FAST_QMAN, "timewheel_debt_ns=%u!\n", t->timewheel_debt_ns);
+      TAS_LOG(INFO, FAST_QMAN, "timewheel_debt_ns=%u!\n", t->timewheel_debt_ns);
       break;
     }
 
