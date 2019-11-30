@@ -643,7 +643,7 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
   for (cnt = 0; cnt < num;) {
     if (t->timewheel_debt_ns == 0)
     {
-      TAS_LOG(ERR, FAST_QMAN, "timewheel_debt_ns=0!\n");
+      TAS_LOG(ERR, FAST_QMAN, "timewheel_debt_ns=%u!\n", t->timewheel_debt_ns);
       break;
     }
 
