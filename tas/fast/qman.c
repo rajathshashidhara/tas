@@ -164,6 +164,11 @@ int qman_thread_init(struct dataplane_context *ctx)
     t->timewheel_count = 0;
     t->timewheel_len = num_elements;
     t->timewheel_head_idx = 0;
+
+    if (t->timewheel_len * t->timewheel_granularity_ns >= UINT32_MAX/2) {
+      t->timewheel_len = (UINT32_MAX/2)/t->timewheel_granularity_ns;
+    }
+
     if ((t->timewheel = calloc(1, sizeof(struct queue*) * num_elements))
       == NULL)
     {
@@ -579,9 +584,6 @@ static inline void queue_activate_timewheel(struct qman_thread *t,
   if (UNLIKELY(timewheel_max_time == 0))
   {
     timewheel_max_time = ((t->timewheel_len - 1) * t->timewheel_granularity_ns);
-    if (timewheel_max_time > UINT32_MAX/2) {
-      timewheel_max_time = UINT32_MAX/2;
-    }
   }
 
   dprintf("queue_activate_timewheel: t=%p q=%p idx=%u avail=%u rate=%u \
