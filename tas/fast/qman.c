@@ -569,15 +569,6 @@ static inline uint8_t queue_level(struct qman_thread *t)
 /*****************************************************************************/
 /* Managing timewheel queues */
 
-static inline uint32_t timestamp_roundup(uint32_t timestamp, uint32_t granularity)
-{
-  // Two reasons to increment by granularity -
-  // Without it we would be rounding down and giving a slightly higher rate than intended. By rounding up we are
-  // giving a slightly lower rate than intended, with the added advantage that re-activating a queue while performing
-  // poll_timewheel will not add it to the current timewheel head index. 
-  return (timestamp - (timestamp % granularity)) + granularity;
-}
-
 static inline void queue_activate_timewheel(struct qman_thread *t,
     struct queue *q, uint32_t q_idx)
 {
@@ -638,32 +629,21 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
     unsigned num, unsigned *q_ids, uint16_t *q_bytes)
 {
   unsigned cnt;
-  uint32_t idx, max_vts, cur_vts;
+  uint32_t idx, cur_vts;
   struct queue *q;
 
   /* maximum virtual time stamp that can be reached */
-  uint32_t time_to_cover = rel_time(t->ts_real, cur_ts);
-  //assert(time_to_cover > 0);
-  max_vts = t->ts_virtual + time_to_cover;
-  //max_vts = cur_ts;
+  t->timewheel_debt_ns += rel_time(t->ts_real, cur_ts);
+  if (t->timewheel_debt_ns >= UINT32_MAX)
+    t->timewheel_debt_ns = UINT32_MAX;
 
   cur_vts = t->ts_virtual;
-
-  if (rel_time(cur_vts, max_vts) < rel_time(cur_vts, cur_ts))
-    max_vts = cur_ts;
-
   idx = t->timewheel_head_idx;
-  //if (!timestamp_lessthaneq(t, cur_vts, max_vts))
-  //{
-  //  TAS_LOG(ERR, FAST_QMAN, "cur_vts=%u cur_ts=%u. cur_ts is claimed to be lesser.\n", cur_vts, cur_ts);
-  //}
 
   for (cnt = 0; cnt < num;) {
-    if (!timestamp_lessthaneq(t, cur_vts, max_vts))
+    if (t->timewheel_debt_ns == 0)
     {
-      //if (timestamp_lessthaneq(t, cur_vts, cur_ts))
-      //  continue;
-        //TAS_LOG(ERR, FAST_QMAN, "cur_vts=%u cur_ts=%u. cur_vts could haved moved a bit more!\n", cur_vts, cur_ts);
+      TAS_LOG(ERR, FAST_QMAN, "timewheel_debt_ns=0!\n");
       break;
     }
 
@@ -706,6 +686,11 @@ static inline unsigned poll_timewheel(struct qman_thread *t, uint32_t cur_ts,
     }
 
     cur_vts += t->timewheel_granularity_ns;
+    if (t->timewheel_debt_ns < t->timewheel_granularity_ns)
+      t->timewheel_granularity_ns = 0;
+    else
+      t->timewheel_debt_ns -= t->timewheel_granularity_ns;
+
     idx++;
     if (idx >= t->timewheel_len)
       idx -= t->timewheel_len;
