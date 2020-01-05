@@ -26,6 +26,7 @@
 #include <rte_config.h>
 
 #include <tas_memif.h>
+#include <utils_log.h>
 
 #include "internal.h"
 #include "fastemu.h"
@@ -87,6 +88,9 @@ int fast_appctx_poll_bump(struct dataplane_context *ctx, void *pqe,
   struct flextcp_pl_atx *atx = pqe;
   int ret;
 
+  //fprintf(stderr, "Calling fast_flows_bump for flow_id=%u\n",
+  //  atx->msg.connupdate.flow_id);
+  //TAS_LOG(ERR, MAIN, "Fast flows bump for flow_id=%u\n", atx->msg.connupdate.flow_id);
   ret = fast_flows_bump(ctx, atx->msg.connupdate.flow_id,
       atx->msg.connupdate.bump_seq, atx->msg.connupdate.rx_bump,
       atx->msg.connupdate.tx_bump, atx->msg.connupdate.flags, nbh, ts);

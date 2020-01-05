@@ -22,41 +22,20 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef TAS_H_
-#define TAS_H_
+#ifndef SLOWPATH_H_
+#define SLOWPATH_H_
 
-#include <config.h>
-#include <packet_defs.h>
+#include <stats.h>
 
-extern struct configuration config;
+struct kernel_context
+{
+  struct controlplane_stats stats;
+};
 
-extern void *tas_shm;
-extern struct flextcp_pl_mem *fp_state;
-extern struct flexnic_info *tas_info;
-#if RTE_VER_YEAR < 19
-  extern struct ether_addr eth_addr;
-#else
-  extern struct rte_ether_addr eth_addr;
+extern struct kernel_context* slowpath_ctx;
+
+#ifdef CONTROLPLANE_STATS
+void controlplane_dump_stats(void);
 #endif
-extern unsigned fp_cores_max;
 
-
-int slowpath_main(void);
-
-int shm_preinit(void);
-int shm_init(unsigned num);
-void shm_cleanup(void);
-void shm_set_ready(void);
-
-int network_init(unsigned num_threads);
-void network_cleanup(void);
-
-/* used by trace and shm */
-void *util_create_shmsiszed(const char *name, size_t size, void *addr);
-
-/* should become config options */
-#define FLEXNIC_DMA_MEM_SIZE (1024 * 1024 * 1024ull)
-#define FLEXNIC_INTERNAL_MEM_SIZE (1024 * 1024 * 32ull)
-#define FLEXNIC_NUM_QMQUEUES (128 * 1024ull)
-
-#endif /* ndef TAS_H_ */
+#endif /* ndef SLOWPATH_H_ */
