@@ -184,6 +184,14 @@ struct tcp_timestamp_opt {
   beui32_t ts_ecr;
 } __attribute__((packed));
 
+struct tcp_timestamp_padded_opt {
+  uint8_t _nop1;
+  uint8_t _nop2;
+  uint8_t kind;
+  uint8_t length;
+  beui32_t ts_val;
+  beui32_t ts_ecr;
+} __attribute__((packed));
 
 /******************************************************************************/
 /* Object framing */
