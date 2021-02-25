@@ -972,7 +972,7 @@ static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,
   uint32_t new_tail;
   struct pkt_tcp *p;
   struct tcp_mss_opt *opt_mss;
-  struct tcp_timestamp_opt *opt_ts;
+  struct tcp_timestamp_padded_opt *opt_ts;
   uint8_t optlen;
   uint16_t len, off_ts, off_mss;
 
@@ -982,7 +982,6 @@ static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,
   optlen += (mss_opt ? sizeof(*opt_mss) : 0);
   off_ts = optlen;
   optlen += (ts_opt ? sizeof(*opt_ts) : 0);
-  optlen = (optlen + 3) & ~3;
   len = sizeof(*p) + optlen;
 
   /** allocate send buffer */
@@ -1028,10 +1027,12 @@ static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,
 
   /* if requested: add timestamp option */
   if (ts_opt) {
-    opt_ts = (struct tcp_timestamp_opt *) ((uint8_t *) (p + 1) + off_ts);
+    opt_ts = (struct tcp_timestamp_padded_opt *) ((uint8_t *) (p + 1) + off_ts);
     memset(opt_ts, 0, optlen);
+    opt_ts->_nop1 = TCP_OPT_NO_OP;
+    opt_ts->_nop2 = TCP_OPT_NO_OP;
     opt_ts->kind = TCP_OPT_TIMESTAMP;
-    opt_ts->length = sizeof(*opt_ts);
+    opt_ts->length = sizeof(struct tcp_timestamp_opt);
     opt_ts->ts_val = t_beui32(0);
     opt_ts->ts_ecr = t_beui32(ts_echo);
   }
