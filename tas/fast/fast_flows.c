@@ -881,10 +881,10 @@ static void flow_tx_segment(struct dataplane_context *ctx,
 {
   uint16_t hdrs_len, optlen, fin_fl;
   struct pkt_tcp *p = network_buf_buf(nbh);
-  struct tcp_timestamp_opt *opt_ts;
+  struct tcp_timestamp_padded_opt *opt_ts;
 
   /* calculate header length depending on options */
-  optlen = (sizeof(*opt_ts) + 3) & ~3;
+  optlen = sizeof(*opt_ts);
   hdrs_len = sizeof(*p) + optlen;
 
   /* fill headers */
@@ -921,9 +921,11 @@ static void flow_tx_segment(struct dataplane_context *ctx,
 
   /* fill in timestamp option */
   memset(p + 1, 0, optlen);
-  opt_ts = (struct tcp_timestamp_opt *) (p + 1);
+  opt_ts = (struct tcp_timestamp_padded_opt *) (p + 1);
+  opt_ts->_nop1 = TCP_OPT_NO_OP;
+  opt_ts->_nop2 = TCP_OPT_NO_OP;
   opt_ts->kind = TCP_OPT_TIMESTAMP;
-  opt_ts->length = sizeof(*opt_ts);
+  opt_ts->length = sizeof(struct tcp_timestamp_opt);
   opt_ts->ts_val = t_beui32(ts_my);
   opt_ts->ts_ecr = t_beui32(ts_echo);
 
