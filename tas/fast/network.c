@@ -112,10 +112,13 @@ int network_init(unsigned n_threads)
   if (count == 0) {
     fprintf(stderr, "No ethernet devices\n");
     goto error_exit;
-  } else if (count > 1) {
+  }
+#if 0
+  else if (count > 1) {
     fprintf(stderr, "Multiple ethernet devices\n");
     goto error_exit;
   }
+#endif
 
   RTE_ETH_FOREACH_DEV(p) {
     net_port_id = p;
@@ -270,11 +273,9 @@ int network_thread_init(struct dataplane_context *ctx)
     }
 
     /* setting up RETA failed */
-    if (config.fp_autoscale) {
-      if (reta_setup() != 0) {
-        fprintf(stderr, "RETA setup failed\n");
-        goto error_tx_queue;
-      }
+    if (reta_setup() != 0) {
+      fprintf(stderr, "RETA setup failed\n");
+      goto error_tx_queue;
     }
     start_done = 1;
   }

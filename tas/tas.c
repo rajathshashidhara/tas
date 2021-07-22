@@ -80,7 +80,12 @@ int main(int argc, char *argv[])
     res = EXIT_FAILURE;
     goto error_exit;
   }
+
+  /* if autoscale is disabled, then set fp_cores_cur = fp_cores_max */
   fp_cores_max = config.fp_cores_max;
+  if (!config.fp_autoscale) {
+    fp_cores_cur = fp_cores_max;
+  }
 
   /* allocate shared memory before dpdk grabs all huge pages */
   if (shm_preinit() != 0) {

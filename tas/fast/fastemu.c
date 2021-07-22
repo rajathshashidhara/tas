@@ -161,15 +161,15 @@ void dataplane_loop(struct dataplane_context *ctx)
 
     STATS_TS(start);
     n += poll_rx(ctx, ts, cyc);
-    STATS_TS(rx);
     tx_flush(ctx);
-
-    n += poll_qman_fwd(ctx, ts);
-
+    STATS_TS(rx);
     STATS_TSADD(ctx, cyc_rx, rx - start);
+    n += poll_qman_fwd(ctx, ts);
+    STATS_TS(qmfwd);
+    STATS_TSADD(ctx, cyc_qmfwd, qmfwd - rx);
     n += poll_qman(ctx, ts);
     STATS_TS(qm);
-    STATS_TSADD(ctx, cyc_qm, qm - rx);
+    STATS_TSADD(ctx, cyc_qm, qm - qmfwd);
     n += poll_queues(ctx, ts);
     STATS_TS(qs);
     STATS_TSADD(ctx, cyc_qs, qs - qm);
@@ -240,15 +240,19 @@ void dataplane_dump_stats(void)
         "qm=(%"PRIu64",%"PRIu64",%"PRIu64")  "
         "rx=(%"PRIu64",%"PRIu64",%"PRIu64")  "
         "qs=(%"PRIu64",%"PRIu64",%"PRIu64")  "
-        "cyc=(%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64")\n", i,
+	      "qmfwd=(%"PRIu64",%"PRIu64",%"PRIu64") "
+        "cyc=(%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64")\n", i,
         read_stat(&ctx->stat_qm_poll), read_stat(&ctx->stat_qm_empty),
         read_stat(&ctx->stat_qm_total),
         read_stat(&ctx->stat_rx_poll), read_stat(&ctx->stat_rx_empty),
         read_stat(&ctx->stat_rx_total),
         read_stat(&ctx->stat_qs_poll), read_stat(&ctx->stat_qs_empty),
         read_stat(&ctx->stat_qs_total),
+        read_stat(&ctx->stat_qmfwd_poll), read_stat(&ctx->stat_qmfwd_empty),
+        read_stat(&ctx->stat_qmfwd_total),
         read_stat(&ctx->stat_cyc_db), read_stat(&ctx->stat_cyc_qm),
-        read_stat(&ctx->stat_cyc_rx), read_stat(&ctx->stat_cyc_qs));
+        read_stat(&ctx->stat_cyc_rx), read_stat(&ctx->stat_cyc_qs),
+      	read_stat(&ctx->stat_cyc_qmfwd));
   }
 }
 #endif
@@ -392,7 +396,7 @@ static unsigned poll_kernel(struct dataplane_context *ctx, uint32_t ts)
 
   for (k = 0; k < max;) {
     ret = fast_kernel_poll(ctx, handles[k], ts);
- 
+
     if (ret == 0)
       k++;
     else if (ret < 0)
@@ -468,11 +472,18 @@ static unsigned poll_qman_fwd(struct dataplane_context *ctx, uint32_t ts)
   void *flow_states[4 * BATCH_SIZE];
   int ret, i;
 
+  STATS_ADD(ctx, qmfwd_poll, 1);
+
   /* poll queue manager forwarding ring */
   ret = rte_ring_dequeue_burst(ctx->qman_fwd_ring, flow_states, 4 * BATCH_SIZE, NULL);
   for (i = 0; i < ret; i++) {
     fast_flows_qman_fwd(ctx, flow_states[i]);
   }
+
+  if (ret <= 0)
+	  STATS_ADD(ctx, qmfwd_empty, 1);
+
+  STATS_ADD(ctx, qmfwd_total, ret);
 
   return ret;
 }

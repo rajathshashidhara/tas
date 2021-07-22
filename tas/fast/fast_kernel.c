@@ -100,7 +100,7 @@ void fast_kernel_packet(struct dataplane_context *ctx,
 {
   struct flextcp_pl_appctx *kctx = &fp_state->kctx[ctx->id];
   struct flextcp_pl_krx *krx;
-  uint16_t len;
+  uint16_t len, fg;
 
   /* queue not initialized yet */
   if (kctx->rx_len == 0) {
@@ -115,6 +115,11 @@ void fast_kernel_packet(struct dataplane_context *ctx,
     return;
   }
 
+  if (network_buf_flowgroup(nbh, &fg)) {
+    fprintf(stderr, "fast_kernel_packet: network_buf_flowgroup failed\n");
+    abort();
+  }
+
   kctx->rx_head += sizeof(*krx);
   if (kctx->rx_head >= kctx->rx_len)
     kctx->rx_head -= kctx->rx_len;
@@ -123,13 +128,9 @@ void fast_kernel_packet(struct dataplane_context *ctx,
   len = network_buf_len(nbh);
   dma_write(krx->addr, len, network_buf_bufoff(nbh));
 
-  if (network_buf_flowgroup(nbh, &krx->msg.packet.flow_group)) {
-    fprintf(stderr, "fast_kernel_packet: network_buf_flowgroup failed\n");
-    abort();
-  }
-
   krx->msg.packet.len = len;
   krx->msg.packet.fn_core = ctx->id;
+  krx->msg.packet.flow_group = fg;
   MEM_BARRIER();
 
   /* krx queue header */

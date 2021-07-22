@@ -25,7 +25,7 @@ INCDIR ?= $(PREFIX)/include
 # Prefix for dpdk
 RTE_SDK ?= /usr/
 # mpdts to compile
-DPDK_PMDS ?= ixgbe i40e tap virtio
+DPDK_PMDS ?= ixgbe i40e tap virtio nfp
 
 DPDK_CPPFLAGS += -I$(RTE_SDK)/include -I$(RTE_SDK)/include/dpdk \
   -I$(RTE_SDK)/include/x86_64-linux-gnu/dpdk/
