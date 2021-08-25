@@ -165,10 +165,8 @@ int network_init(unsigned n_threads)
 
 
   /* workaround for mlx5. */
-  if (config.fp_autoscale) {
-    if (reta_mlx5_resize() != 0) {
-      goto error_exit;
-    }
+  if (reta_mlx5_resize() != 0) {
+    goto error_exit;
   }
 
 #if RTE_VER_YEAR < 18
