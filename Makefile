@@ -25,7 +25,7 @@ INCDIR ?= $(PREFIX)/include
 # Prefix for dpdk
 RTE_SDK ?= /usr/
 # mpdts to compile
-DPDK_PMDS ?= ixgbe i40e tap virtio
+DPDK_PMDS ?= ixgbe i40e mlx5 tap virtio
 
 DPDK_CPPFLAGS += -I$(RTE_SDK)/include -I$(RTE_SDK)/include/dpdk \
   -I$(RTE_SDK)/include/x86_64-linux-gnu/dpdk/
@@ -52,6 +52,7 @@ DPDK_LDLIBS+= \
   -lrte_gso \
   -Wl,--no-whole-archive \
   -ldl \
+  -libverbs -lmlx5 \
   $(EXTRA_LIBS_DPDK)
 
 
