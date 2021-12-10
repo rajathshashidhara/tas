@@ -193,6 +193,8 @@ struct nicif_connection_stats {
   int txp;
   /** Current rtt estimate */
   uint32_t rtt;
+  /** Last RX Seq */
+  uint32_t c_rxseq;
 };
 
 /**
@@ -225,6 +227,16 @@ int nicif_connection_setrate(uint32_t f_id, uint32_t rate);
  * @return 0 on success, <0 else
  */
 int nicif_connection_retransmit(uint32_t f_id, uint16_t core);
+
+/**
+ * Mark flow for ack after timeout.
+ *
+ * @param f_id ID of flow
+ * @param flow_group FlexNIC flow group
+ *
+ * @return 0 on success, <0 else
+ */
+int nicif_connection_ack(uint32_t f_id, uint16_t flow_group);
 
 /**
  * Allocate transmit buffer for raw packet.
@@ -526,6 +538,10 @@ struct connection {
     uint32_t cnt_tx_pending;
     /** Timestamp when flow was first not moving */
     uint32_t ts_tx_pending;
+    /** Last ACK sent */
+    uint32_t last_ack;
+    /** Timestamp when last ack was sent */
+    uint32_t ts_last_ack;
     /** Linked list for CC connection list. */
     struct connection *cc_next;
   /**@}*/

@@ -299,6 +299,7 @@ int nicif_connection_stats(uint32_t f_id,
   p_stats->c_ecnb = fs->cnt_rx_ecn_bytes;
   p_stats->txp = fs->tx_sent != 0;
   p_stats->rtt = fs->rtt_est;
+  p_stats->c_rxseq = fs->rx_next_seq;
 
   return 0;
 }
@@ -348,6 +349,28 @@ int nicif_connection_retransmit(uint32_t f_id, uint16_t flow_group)
   return 0;
 }
 
+/** Mark flow for ack after timeout. */
+int nicif_connection_ack(uint32_t f_id, uint16_t flow_group)
+{
+  volatile struct flextcp_pl_ktx *ktx;
+  struct nic_buffer *buf;
+  uint32_t tail;
+  uint16_t core = fp_state->flow_group_steering[flow_group];
+
+  if ((ktx = ktx_try_alloc(core, &buf, &tail)) == NULL) {
+    return -1;
+  }
+  txq_tail[core] = tail;
+
+  ktx->msg.connretran.flow_id = f_id;
+  MEM_BARRIER();
+  ktx->type = FLEXTCP_PL_KTX_CONNACK;
+
+  notify_fastpath_core(core);
+
+  return 0;
+}
+
 /** Allocate transmit buffer */
 int nicif_tx_alloc(uint16_t len, void **pbuf, uint32_t *opaque)
 {
@@ -373,7 +396,7 @@ void nicif_tx_send(uint32_t opaque, int no_ts)
   MEM_BARRIER();
   ktx->type = (!no_ts ? FLEXTCP_PL_KTX_PACKET : FLEXTCP_PL_KTX_PACKET_NOTS);
   txq_tail[0] = opaque;
-  
+
   notify_fastpath_core(0);
 }
 

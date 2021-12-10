@@ -80,6 +80,16 @@ int fast_kernel_poll(struct dataplane_context *ctx,
 
     fast_flows_retransmit(ctx, flow_id);
     ret = 1;
+  } else if (ktx->type == FLEXTCP_PL_KTX_CONNACK) {
+    flow_id = ktx->msg.connretran.flow_id;
+
+    if (flow_id >= FLEXNIC_PL_FLOWST_NUM) {
+      fprintf(stderr, "fast_kernel_qman: invalid flow id=%u\n", flow_id);
+      abort();
+    }
+
+    fast_flows_ack(ctx, flow_id, nbh, ts);
+    ret = 0;
   } else {
     fprintf(stderr, "fast_appctx_poll: unknown type: %u\n", ktx->type);
     abort();

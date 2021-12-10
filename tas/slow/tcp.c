@@ -177,6 +177,7 @@ int tcp_open(struct app_context *ctx, uint64_t opaque, uint32_t remote_ip,
   conn->local_seq = 0; /* TODO: assign random */
   conn->remote_seq = 0;
   conn->cnt_tx_pending = 0;
+  conn->last_ack = 0;
   conn->db_id = db_id;
   conn->flags = 0;
 
@@ -337,6 +338,7 @@ int tcp_accept(struct app_context *ctx, uint64_t opaque,
   conn->db_id = db_id;
   conn->flags = listen->flags;
   conn->cnt_tx_pending = 0;
+  conn->last_ack = 0;
 
   conn->ht_next = listen->wait_conns;
   listen->wait_conns = conn;
@@ -1039,7 +1041,7 @@ static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,
   /* calculate header checksums */
   p->ip.chksum = rte_ipv4_cksum((void *) &p->ip);
   p->tcp.chksum = rte_ipv4_udptcp_cksum((void *) &p->ip, (void *) &p->tcp);
-  
+
   /* send packet */
   nicif_tx_send(new_tail, 0);
   return 0;

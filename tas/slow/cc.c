@@ -231,7 +231,8 @@ void cc_conn_remove(struct connection *conn)
 static inline void issue_retransmits(struct connection *c,
     struct nicif_connection_stats *stats, uint32_t cur_ts)
 {
-  uint32_t rtt = (stats->rtt != 0 ? stats->rtt : config.tcp_rtt_init);
+  // uint32_t rtt = (stats->rtt != 0 ? stats->rtt : config.tcp_rtt_init);
+  uint32_t rtt = config.tcp_rtt_init;
 
   /* check for re-transmits */
   if (stats->txp && stats->c_ackb == 0) {
@@ -248,6 +249,16 @@ static inline void issue_retransmits(struct connection *c,
     }
   } else {
     c->cnt_tx_pending = 0;
+  }
+
+  /* Check for acks */
+  if (c->last_ack != stats->c_rxseq) {
+    // if ((cur_ts - c->ts_last_ack) >= 2 * rtt) {
+      if (nicif_connection_ack(c->flow_id, c->flow_group) == 0) {
+        c->last_ack = stats->c_rxseq;
+        c->ts_last_ack = cur_ts;
+      }
+    // }
   }
 }
 

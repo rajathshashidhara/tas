@@ -370,8 +370,9 @@ int fast_flows_packet(struct dataplane_context *ctx,
 
   /* trigger an ACK if there is payload (even if we discard it) */
 #ifndef SKIP_ACK
-  if (payload_bytes > 0)
-    trigger_ack = 1;
+  // NOTE: We're using delayed ACKs here!
+  // if (payload_bytes > 0)
+  //   trigger_ack = 1;
 #endif
 
   /* Stats for CC */
@@ -522,7 +523,8 @@ int fast_flows_packet(struct dataplane_context *ctx,
     assert(fs->rx_next_pos < fs->rx_len);
     fs->rx_next_seq += payload_bytes;
 #ifndef SKIP_ACK
-    trigger_ack = 1;
+    // NOTE: We're using delayed ACKs here!
+    // trigger_ack = 1;
 #endif
 
 #ifdef FLEXNIC_PL_OOO_RECV
@@ -765,6 +767,24 @@ int fast_flows_bump(struct dataplane_context *ctx, uint32_t flow_id,
 unlock:
   fs_unlock(fs);
   return ret;
+}
+
+/* send ack */
+void fast_flows_ack(struct dataplane_context *ctx, uint32_t flow_id,
+    struct network_buf_handle *nbh, uint32_t ts)
+{
+  uint8_t fin;
+  struct flextcp_pl_flowst *fs = &fp_state->flowst[flow_id];
+
+  fs_lock(fs);
+
+  fin = (fs->rx_base_sp & FLEXNIC_PL_FLOWST_TXFIN) == FLEXNIC_PL_FLOWST_TXFIN &&
+    !fs->tx_avail;
+
+  flow_tx_segment(ctx, nbh, fs, fs->tx_next_seq, fs->rx_next_seq,
+      fs->rx_avail, 0, 0, fs->tx_next_ts, ts, fin);
+
+  fs_unlock(fs);
 }
 
 /* start retransmitting */
