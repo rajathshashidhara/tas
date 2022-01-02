@@ -227,6 +227,89 @@ struct flextcp_pl_appctx {
 #define FLEXNIC_PL_FLOWST_RXFIN 32
 #define FLEXNIC_PL_FLOWST_RX_MASK (~63ULL)
 
+/** Connection identifiers */
+struct flextcp_pl_flowst_conn_t {
+  union {
+    struct {
+      uint32_t flow_group;
+
+      struct eth_addr remote_mac;
+      uint16_t flags;
+
+      beui32_t local_ip;
+      beui32_t remote_ip;
+      beui16_t local_port;
+      beui16_t remote_port;
+    } __attribute__((packed));
+
+    uint32_t rsvd[16];
+  };
+} __attribute__((packed, aligned(64)));
+
+/** Memory buffer addresses */
+struct flextcp_pl_flowst_mem_t {
+  union {
+    struct {
+      uint64_t opaque;
+
+      uint64_t rx_base;
+      uint64_t tx_base;
+
+      uint32_t rx_len;
+      uint32_t tx_len;
+
+      uint16_t db_id;
+    } __attribute__((packed));
+
+    uint32_t rsvd[16];
+  };
+} __attribute__((packed, aligned(64)));
+
+/** TCP state */
+struct flextcp_pl_flowst_tcp_t {
+  union {
+    struct {
+      uint32_t tx_len;
+      uint32_t tx_avail;
+      uint32_t tx_remote_avail;
+      uint32_t tx_sent;
+      uint32_t tx_next_seq;
+      uint32_t tx_next_pos;
+      uint32_t tx_next_ts;
+
+      uint16_t flags;
+      uint16_t dupack_cnt;
+
+      uint32_t rx_len;
+      uint32_t rx_avail;
+      uint32_t rx_next_seq;
+      uint32_t rx_next_pos;
+      uint32_t rx_ooo_len;
+      uint32_t rx_ooo_start;
+    } __attribute__((packed));
+
+    uint32_t rsvd[16];
+  };
+} __attribute__((packed, aligned(64)));
+
+/** Congestion Control state */
+struct flextcp_pl_flowst_cc_t {
+  union {
+    struct {
+      uint32_t tx_avail;
+      uint32_t tx_rate;
+      uint32_t rtt_est;
+      uint32_t txp;
+      uint32_t cnt_tx_drops;
+      uint32_t cnt_rx_acks;
+      uint32_t cnt_rx_ack_bytes;
+      uint32_t cnt_rx_ecn_bytes;
+    } __attribute__((packed));
+
+    uint32_t rsvd[16];
+  };
+} __attribute__((packed, aligned(64)));
+
 /** Flow state registers */
 struct flextcp_pl_flowst {
   /********************************************************/
@@ -335,6 +418,11 @@ struct flextcp_pl_mem {
   struct flextcp_pl_appctx appctx[FLEXNIC_PL_APPST_CTX_MCS][FLEXNIC_PL_APPCTX_NUM];
 
   /* registers for flow state */
+  struct flextcp_pl_flowst_tcp_t    flows_tcp_state[FLEXNIC_PL_FLOWST_NUM];
+  struct flextcp_pl_flowst_conn_t   flows_conn_info[FLEXNIC_PL_FLOWST_NUM];
+  struct flextcp_pl_flowst_mem_t    flows_mem_info[FLEXNIC_PL_FLOWST_NUM];
+  struct flextcp_pl_flowst_cc_t     flows_cc_info[FLEXNIC_PL_FLOWST_NUM];
+
   struct flextcp_pl_flowst flowst[FLEXNIC_PL_FLOWST_NUM];
 
   /* flow lookup table */
