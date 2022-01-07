@@ -218,4 +218,12 @@ struct pkt_tcp {
   struct tcp_hdr tcp;
 } __attribute__ ((packed));
 
+struct pkt_tcp_ts {
+  struct eth_hdr eth;
+  struct ip_hdr  ip;
+  struct tcp_hdr tcp;
+  struct tcp_timestamp_opt ts_opt;
+  uint16_t pad;
+} __attribute__ ((packed));
+
 #endif

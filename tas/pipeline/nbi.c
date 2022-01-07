@@ -5,10 +5,11 @@
 #include <rte_ether.h>
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
-#include <rte_reorder.h>
 
-#define MAX_NB_RX   32
-#define MAX_NB_TX   32
+#include "pipeline.h"
+
+#define MAX_NB_RX   NUM_FLOWGRPS
+#define MAX_NB_TX   NUM_FLOWGRPS
 #define BATCH_SIZE  32
 
 extern struct rte_ring *nbi_rx_queues[MAX_NB_RX];
@@ -21,7 +22,7 @@ struct nbi_thread_conf {
   uint16_t nb_rx;
   uint16_t rx_queueid_start;
 
-  /* Handles TX to [tx_queueid_start, tx_queueid_start + nb_tx) */
+  /* Handles TX to   [tx_queueid_start, tx_queueid_start + nb_tx) */
   /* Typically, each flow group has its own TX queue */
   uint16_t nb_tx;
   uint16_t tx_queueid_start;
@@ -62,7 +63,7 @@ int nbi_thread(void *args)
 
     /* Free packets on enqueue failure */
     for (i = m; i < n; i++) {
-      rte_pktmbuf_free_seg(rx_pkts[i]);   // NOTE: We do not handle chained mbufs here!
+      rte_pktmbuf_free_seg(rx_pkts[i]);   // NOTE: We do not handle chained mbufs for efficiency!
     }
 
 next_rx_queue:
@@ -79,7 +80,7 @@ next_rx_queue:
     
     /* Free packets on transmit failure */
     for (i = m; i < n; i++) {
-      rte_pktmbuf_free_seg(rx_pkts[i]);   // NOTE: We do not handle chained mbufs here!
+      rte_pktmbuf_free_seg(tx_pkts[i]);   // NOTE: We do not handle chained mbufs for efficiency!
     }
 
 next_tx_queue:
