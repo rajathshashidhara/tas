@@ -55,7 +55,7 @@ static void prepare_ack_header(struct rte_mbuf *pkt)
   // TODO: Not yet implemented!
 }
 
-static uint16_t preprocess_rx(uint16_t rxq)
+static unsigned int preprocess_rx(uint16_t rxq)
 {
   unsigned int i, ret;
   unsigned int num_rx, num_sp, num_proc;
