@@ -160,17 +160,18 @@ STATIC_ASSERT(sizeof(struct flextcp_pl_arx) == 32, arx_size);
 
 /** Application TX queue entry */
 struct flextcp_pl_atx {
+  volatile uint8_t type;
   union {
     struct {
+      uint8_t  flags;
+      uint16_t bump_seq;
+      uint32_t flow_id:24;
+      uint32_t flow_grp:8;
       uint32_t rx_bump;
       uint32_t tx_bump;
-      uint32_t flow_id;
-      uint16_t bump_seq;
-      uint8_t  flags;
     } __attribute__((packed)) connupdate;
     uint8_t raw[15];
   } __attribute__((packed)) msg;
-  volatile uint8_t type;
 } __attribute__((packed));
 
 STATIC_ASSERT(sizeof(struct flextcp_pl_atx) == 16, atx_size);
@@ -240,6 +241,9 @@ struct flextcp_pl_flowst_conn_t {
       beui32_t remote_ip;
       beui16_t local_port;
       beui16_t remote_port;
+
+      uint32_t seq_delta;
+      uint32_t ack_delta;
     } __attribute__((packed));
 
     uint32_t rsvd[16];
@@ -258,6 +262,9 @@ struct flextcp_pl_flowst_mem_t {
       uint32_t rx_len;
       uint32_t tx_len;
 
+      uint32_t seq_delta;
+      uint32_t ack_delta;
+
       uint16_t db_id;
     } __attribute__((packed));
 
@@ -269,23 +276,34 @@ struct flextcp_pl_flowst_mem_t {
 struct flextcp_pl_flowst_tcp_t {
   union {
     struct {
-      uint32_t tx_len;
+      // uint32_t tx_len;
+      // uint32_t tx_next_pos;
       uint32_t tx_avail;
       uint32_t tx_remote_avail;
       uint32_t tx_sent;
       uint32_t tx_next_seq;
-      uint32_t tx_next_pos;
       uint32_t tx_next_ts;
 
       uint16_t flags;
       uint16_t dupack_cnt;
 
-      uint32_t rx_len;
+      // uint32_t rx_len;
+      // uint32_t rx_next_pos;
       uint32_t rx_avail;
       uint32_t rx_next_seq;
-      uint32_t rx_next_pos;
       uint32_t rx_ooo_len;
       uint32_t rx_ooo_start;
+
+      /*>  CC stats */
+      uint16_t cnt_tx_drops;
+      uint16_t cnt_rx_acks;
+      uint32_t cnt_rx_ack_bytes;
+      uint32_t cnt_rx_ecn_bytes;
+      uint32_t rtt_est;
+      
+      /*> QM state */
+      uint32_t qm_avail;
+      uint32_t tx_rate;
     } __attribute__((packed));
 
     uint32_t rsvd[16];
@@ -421,7 +439,7 @@ struct flextcp_pl_mem {
   struct flextcp_pl_flowst_tcp_t    flows_tcp_state[FLEXNIC_PL_FLOWST_NUM];
   struct flextcp_pl_flowst_conn_t   flows_conn_info[FLEXNIC_PL_FLOWST_NUM];
   struct flextcp_pl_flowst_mem_t    flows_mem_info[FLEXNIC_PL_FLOWST_NUM];
-  struct flextcp_pl_flowst_cc_t     flows_cc_info[FLEXNIC_PL_FLOWST_NUM];
+  // struct flextcp_pl_flowst_cc_t     flows_cc_info[FLEXNIC_PL_FLOWST_NUM];
 
   struct flextcp_pl_flowst flowst[FLEXNIC_PL_FLOWST_NUM];
 

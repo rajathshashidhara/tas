@@ -44,7 +44,7 @@ static int validate_pkt_header(struct rte_mbuf *buf)
 
 static void generate_pkt_summary(struct rte_mbuf *pkt)
 {
-  struct pkt_summary_t *s = (struct pkt_summary_t *) pkt->buf_addr; // Use the headroom to store metadata
+  struct work_t *w = (struct work_t *) pkt->buf_addr; // Use the headroom to store metadata
   struct pkt_tcp_ts *p = (struct pkt_tcp_ts *) rte_pktmbuf_mtod(pkt);
 
   // TODO: Not yet implemented!
