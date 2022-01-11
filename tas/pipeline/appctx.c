@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <rte_config.h>
+#include <rte_atomic.h>
 #include <rte_ring.h>
 #include <rte_mempool.h>
 
@@ -13,8 +14,9 @@ extern struct rte_mempool *atx_desc_pool;        /*> Pool for TX APPCTX descript
 extern struct rte_ring *atx_ring;
 extern struct rte_ring *arx_ring;
 
-#define BATCH_SIZE      16
+extern void notify_appctx(struct flextcp_pl_appctx *ctx, uint64_t tsc);
 
+#define BATCH_SIZE      16
 struct appctx_desc_t {
   union {
     struct flextcp_pl_atx atx;
@@ -91,9 +93,12 @@ static unsigned int poll_arx_queue_free_entries(uint16_t arxq)
 }
 
 static unsigned int flush_arx_queues(struct appctx_desc_t *desc[BATCH_SIZE],
-    unsigned int num)
+    unsigned int num, uint64_t tsc)
 {
-  unsigned int i;
+  unsigned int i, actx_id;
+  uint32_t rxnhead;
+  struct flextcp_pl_appctx *actx;
+  struct flextcp_pl_arx *arx_entries[BATCH_SIZE];
 
   /* Prefetch the descriptors */
   for (i = 0; i < num; i++) {
@@ -102,6 +107,42 @@ static unsigned int flush_arx_queues(struct appctx_desc_t *desc[BATCH_SIZE],
 
   /* Allocate entries on CTX queue */
   for (i = 0; i < num; i++) {
-    
+    actx_id = desc[i]->arx.msg.connupdate.db_id;
+    actx = &fp_state->appctx[0][actx_id];
+
+    if (actx->rx_avail == 0) {
+      fprintf(stderr, "%s: no space in app rx queue\n");
+      abort();
+    }
+
+    rte_compiler_barrier();
+
+    arx_entries[i] = dma_pointer(actx->rx_base + actx->rx_head, sizeof(struct flextcp_pl_arx));
+
+    rxnhead = actx->rx_head + sizeof(struct flextcp_pl_arx);
+    if (rxnhead >= actx->rx_len) {
+      rxnhead -= actx->rx_len;
+    }
+    actx->rx_head = rxnhead;
+    actx->rx_avail -= sizeof(struct flextcp_pl_arx);
   }
+
+  /* Prefetch entries */
+  for (i = 0; i < num; i++) {
+    rte_prefetch0(arx_entries[i]);
+  }
+
+  /* Copy entries */
+  for (i = 0; i < num; i++) {
+    *arx_entries[i] = desc[i];
+  }
+
+  /* Notify contexts */
+  for (i = 0; i < num; i++) {
+    actx_id = desc[i]->arx.msg.connupdate.db_id;
+    actx = &fp_state->appctx[0][actx_id];
+    notify_appctx(actx, tsc);
+  }
+
+  return num;
 }

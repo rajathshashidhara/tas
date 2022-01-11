@@ -133,20 +133,21 @@ STATIC_ASSERT(sizeof(struct flextcp_pl_ktx) == 64, ktx_size);
 
 /** Update receive and transmit buffer of flow */
 struct flextcp_pl_arx_connupdate {
+  uint8_t  flags;
+  uint16_t db_id;
   uint64_t opaque;
   uint32_t rx_bump;
   uint32_t rx_pos;
   uint32_t tx_bump;
-  uint8_t flags;
 } __attribute__((packed));
 
 /** Application RX queue entry */
 struct flextcp_pl_arx {
+  volatile uint8_t type;
   union {
     struct flextcp_pl_arx_connupdate connupdate;
     uint8_t raw[31];
   } __attribute__((packed)) msg;
-  volatile uint8_t type;
 } __attribute__((packed));
 
 STATIC_ASSERT(sizeof(struct flextcp_pl_arx) == 32, arx_size);
