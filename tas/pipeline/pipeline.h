@@ -46,4 +46,28 @@ struct work_t {
   };
 };
 
+struct dma_cmd_t {
+  union {
+    struct {
+      uint16_t len0;
+      uint16_t len1;
+
+      uint32_t flow_id;
+      uint16_t flow_grp;
+      uint16_t actx_id;
+
+      struct rte_mbuf *buf;
+      struct appctx_desc_t *desc;
+      
+      uintptr_t src_addr0;
+      uintptr_t dst_addr0;
+
+      uintptr_t src_addr1;
+      uintptr_t dst_addr1;
+    } __attribute__((packed));
+
+    uint32_t __raw[16];
+  };
+} __attribute__((packed));
+
 #endif /* TAS_PIPELINE_H_ */
