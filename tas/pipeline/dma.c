@@ -31,15 +31,15 @@ static unsigned process_completion(uint64_t buf_handles[BATCH_SIZE],
                                    uint64_t desc_handles[BATCH_SIZE],
                                    unsigned num)
 {
-  unsigned int i, k, ret;
+  unsigned i, k, ret;
 
   struct appctx_desc_t *arx_desc[BATCH_SIZE];
   struct rte_mbuf *tx_mbufs[MAX_NB_TX][BATCH_SIZE];
   struct rte_mbuf *free_mbufs[BATCH_SIZE];
 
-  unsigned int desc_cnt;
-  unsigned int tx_cnt[MAX_NB_TX];
-  unsigned int free_cnt;
+  unsigned desc_cnt;
+  unsigned tx_cnt[MAX_NB_TX];
+  unsigned free_cnt;
 
   uint16_t flow_grp, actx_id;
   struct rte_mbuf *buf;
@@ -107,7 +107,7 @@ static unsigned process_completion(uint64_t buf_handles[BATCH_SIZE],
 #ifdef DMA_IOAT
 
 static int dev_id;
-static unsigned int issue_copies(struct dma_cmt_t *cmds[BATCH_SIZE],
+static unsigned issue_copies(struct dma_cmt_t *cmds[BATCH_SIZE],
                                  unsigned num)
 {
   int ret;
@@ -177,7 +177,7 @@ static unsigned int issue_copies(struct dma_cmt_t *cmds[BATCH_SIZE],
 
 #else
 
-static unsigned int issue_copies(struct dma_cmt_t *cmds[BATCH_SIZE],
+static unsigned issue_copies(struct dma_cmt_t *cmds[BATCH_SIZE],
                                  unsigned num)
 {
   int ret;

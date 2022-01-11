@@ -25,10 +25,10 @@ struct appctx_desc_t {
   };
 };
 
-static unsigned int poll_atx_queue(uint16_t atxq,
-    struct appctx_desc_t *desc[BATCH_SIZE], unsigned int k)
+static unsigned poll_atx_queue(uint16_t atxq,
+    struct appctx_desc_t *desc[BATCH_SIZE], unsigned k)
 {
-  unsigned int i;
+  unsigned i;
   struct flextcp_pl_appctx *actx = &fp_state->appctx[0][atxq];
   struct flextcp_pl_atx *atx;
   uint8_t type;
@@ -60,7 +60,7 @@ static unsigned int poll_atx_queue(uint16_t atxq,
   return i - k;
 }
 
-static unsigned int poll_arx_queue_free_entries(uint16_t arxq)
+static unsigned poll_arx_queue_free_entries(uint16_t arxq)
 {
   struct flextcp_pl_appctx *actx = &fp_state->appctx[0][arxq];
   struct flextcp_pl_arx *parx;
@@ -92,10 +92,10 @@ static unsigned int poll_arx_queue_free_entries(uint16_t arxq)
   return i;
 }
 
-static unsigned int flush_arx_queues(struct appctx_desc_t *desc[BATCH_SIZE],
-    unsigned int num, uint64_t tsc)
+static unsigned flush_arx_queues(struct appctx_desc_t *desc[BATCH_SIZE],
+    unsigned num, uint64_t tsc)
 {
-  unsigned int i, actx_id;
+  unsigned i, actx_id;
   uint32_t rxnhead;
   struct flextcp_pl_appctx *actx;
   struct flextcp_pl_arx *arx_entries[BATCH_SIZE];

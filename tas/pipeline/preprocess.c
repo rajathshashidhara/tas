@@ -55,10 +55,10 @@ static void prepare_ack_header(struct rte_mbuf *pkt)
   // TODO: Not yet implemented!
 }
 
-static unsigned int preprocess_rx(uint16_t rxq)
+static unsigned preprocess_rx(uint16_t rxq)
 {
-  unsigned int i, ret;
-  unsigned int num_rx, num_sp, num_proc;
+  unsigned i, ret;
+  unsigned num_rx, num_sp, num_proc;
   struct rte_mbuf *pkts[BATCH_SIZE];        /*> Packets input from RX queue */
   struct rte_mbuf *sp_pkts[BATCH_SIZE];     /*> Packets filtered out to slowpath */
   struct rte_mbuf *proc_pkts[BATCH_SIZE];   /*> Packets for protocol stage */
