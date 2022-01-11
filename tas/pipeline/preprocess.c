@@ -14,6 +14,9 @@
 
 extern struct rte_ring *nbi_rx_queues[MAX_NB_RX];
 extern struct rte_ring *preproc_queues[NUM_FLOWGRPS + 1];    // NOTE: 1 additional queue for slowpath
+extern struct rte_ring *sched_queues[MAX_NB_TX];
+
+extern struct rte_mempool *tx_mbuf_pool;
 
 extern struct rte_hash *flow_lookup_table;
 
@@ -53,6 +56,66 @@ static void generate_pkt_summary(struct rte_mbuf *pkt)
 static void prepare_ack_header(struct rte_mbuf *pkt)
 {
   // TODO: Not yet implemented!
+}
+
+static void prepare_seg_header(struct sched_tx_t *tx,
+                               struct rte_mbuf *pkt,
+                               struct flextcp_pl_flowst_conn_t *conn_info)
+{
+  // TODO: Not yet implemented!
+}
+
+static void prepare_tx_work_desc(struct sched_tx_t *tx,
+                                 struct work_t *pkt)
+{
+  // TODO: Not yet implemented!
+} 
+
+static unsigned preprocess_tx(uint16_t txq)
+{
+  unsigned i, num, ret;
+  
+  struct sched_tx_t tx[BATCH_SIZE];
+  struct rte_mbuf *pkts[BATCH_SIZE];
+  struct flextcp_pl_flowst_conn_t *conns[BATCH_SIZE];
+  struct work_t *work[BATCH_SIZE];
+
+  num = rte_ring_mc_dequeue_burst(sched_queues[txq], (void **) tx, BATCH_SIZE, NULL);
+  if (num == 0)
+    return 0;
+
+  /* Prefetch connection state */
+  for (i = 0; i < num; i++) {
+    conns[i] = &fp_state->flows_conn_info[tx[i].flow_id];
+    rte_prefetch0(conns[i]);
+  }
+
+  /* Allocate mbufs */
+  if (rte_pktmbuf_alloc_bulk(tx_mbuf_pool, pkts, num) != 0)
+    return 0; // FIXME: we discard the scheduled entries here!
+
+  /* Prefetch mbufs */
+  for (i = 0; i < num; i++) {
+    rte_prefetch0(pkts[i]);
+    rte_prefetch0((((uint8_t *) pkts[i]) + sizeof(struct rte_mbuf)));
+    rte_prefetch0((((uint8_t *) pkts[i]) + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM));
+
+    work_t[i] = (((uint8_t *) pkts[i]) + sizeof(struct rte_mbuf));
+  }
+
+  /* Prepare segment header */
+  for (i = 0; i < num; i++) {
+    prepare_seg_header(tx[i], pkts[i], conns[i]);
+    prepare_tx_work_desc(tx[i], work[i]);
+  }
+
+  ret = rte_ring_mp_enqueue_burst(preproc_queues[txq], work, num, NULL);
+
+  for (i = ret; i < num; i++) {
+    rte_pktmbuf_free_seg(sp_pkts[i]);   // NOTE: We do not handle chained mbufs here! 
+  }
+
+  return num;
 }
 
 static unsigned preprocess_rx(uint16_t rxq)

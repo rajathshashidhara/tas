@@ -27,6 +27,7 @@ struct work_t {
       uint32_t flow_grp:8;
       uint32_t rx_bump;
       uint32_t tx_bump;
+      uint32_t reorder_seqn;
 
       uint32_t seq;
       uint32_t ack;
@@ -67,6 +68,21 @@ struct dma_cmd_t {
     } __attribute__((packed));
 
     uint32_t __raw[16];
+  };
+} __attribute__((packed));
+
+#define SCHED_FLAG_TX_FORCE   (1 << 0)
+
+static sched_tx_t {
+  union {
+    struct {
+      uint8_t  type;
+      uint8_t  flags;
+      uint16_t len;
+      uint32_t flow_id:24;
+      uint32_t flow_grp:8;
+    } __attribute__((packed));
+    uint64_t __raw;
   };
 } __attribute__((packed));
 
