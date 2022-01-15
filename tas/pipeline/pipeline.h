@@ -2,6 +2,7 @@
 #define TAS_PIPELINE_H_
 
 #include <stdint.h>
+#include <rte_config.h>
 
 enum {
   WORK_TYPE_RX   = 0,
@@ -16,6 +17,19 @@ enum {
 #define  WORK_FLAG_FIN                  (1 << 3)     /*> Marked connection as FIN          */
 #define  WORK_FLAG_QM_FORCE             (1 << 4)     /*> Force QM to schedule transmission */
 #define  WORK_FLAG_IP_ECE               (1 << 5)     /*> CE notified in IP header          */
+
+struct workptr_t {
+  union {
+    struct {
+      uint64_t type:2;
+      uint64_t flow_grp:8;
+      uint64_t flags:6;           /* Flags are interface specific */
+      uint64_t addr:48;
+    } __attribute__ ((packed));
+    uintptr_t __rawptr;
+  };
+};
+STATIC_ASSERT(sizeof(work_ptr_t) == sizeof(uintptr_t), workptr_size);
 
 struct work_t {
   union {
@@ -46,6 +60,7 @@ struct work_t {
     uint32_t __raw[16];
   };
 };
+STATIC_ASSERT(sizeof(work_t) == RTE_CACHE_LINE_SIZE, work_size);
 
 struct dma_cmd_t {
   union {
@@ -70,6 +85,7 @@ struct dma_cmd_t {
     uint32_t __raw[16];
   };
 } __attribute__((packed));
+STATIC_ASSERT(sizeof(dma_cmd_t) == RTE_CACHE_LINE_SIZE, dma_cmd_size);
 
 #define SCHED_FLAG_TX_FORCE   (1 << 0)
 
@@ -85,5 +101,5 @@ static sched_tx_t {
     uint64_t __raw;
   };
 } __attribute__((packed));
-
+STATIC_ASSERT(sizeof(sched_tx_t) == sizeof(uintptr_t), sched_tx_size);
 #endif /* TAS_PIPELINE_H_ */

@@ -271,7 +271,7 @@ void arp_timeout(struct timeout *to, enum timeout_type type)
 static inline int response_tx(const void *dst_mac, uint32_t dst_ip)
 {
   struct pkt_arp *parp_out;
-  uint32_t new_tail;
+  void *new_tail;
 
   /* allocate tx buffer */
   if (nicif_tx_alloc(sizeof(*parp_out), (void **) &parp_out, &new_tail) != 0) {
@@ -294,7 +294,7 @@ static inline int response_tx(const void *dst_mac, uint32_t dst_ip)
   parp_out->arp.plen = 4;
   parp_out->arp.oper = t_beui16(ARP_OPER_REPLY);
 
-  nicif_tx_send(new_tail, 0);
+  nicif_tx_send(new_tail);
 
   return 0;
 }
@@ -302,7 +302,7 @@ static inline int response_tx(const void *dst_mac, uint32_t dst_ip)
 static inline int request_tx(uint32_t dst_ip)
 {
   struct pkt_arp *parp_out;
-  uint32_t new_tail;
+  void *new_tail;
   uint64_t dst_mac = 0xffffffffffffULL;
 
   /* allocate tx buffer */
@@ -326,7 +326,7 @@ static inline int request_tx(uint32_t dst_ip)
   parp_out->arp.plen = 4;
   parp_out->arp.oper = t_beui16(ARP_OPER_REQUEST);
 
-  nicif_tx_send(new_tail, 0);
+  nicif_tx_send(new_tail);
 
   return 0;
 }

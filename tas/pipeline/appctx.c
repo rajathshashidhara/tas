@@ -7,6 +7,7 @@
 
 #include "tas_memif.h"
 #include "dma.h"
+#include "pipeline.h"
 
 extern struct rte_mempool *arx_desc_pool;        /*> Pool for RX APPCTX descriptors */
 extern struct rte_mempool *atx_desc_pool;        /*> Pool for TX APPCTX descriptors */
@@ -115,7 +116,7 @@ static unsigned flush_arx_queues(struct appctx_desc_t *desc[BATCH_SIZE],
       abort();
     }
 
-    rte_compiler_barrier();
+    MEM_BARRIER();
 
     arx_entries[i] = dma_pointer(actx->rx_base + actx->rx_head, sizeof(struct flextcp_pl_arx));
 

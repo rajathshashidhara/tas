@@ -969,7 +969,7 @@ static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,
     uint32_t remote_seq, uint16_t flags, int ts_opt, uint32_t ts_echo,
     uint16_t mss_opt)
 {
-  uint32_t new_tail;
+  void *new_tail;
   struct pkt_tcp *p;
   struct tcp_mss_opt *opt_mss;
   struct tcp_timestamp_opt *opt_ts;
@@ -1041,7 +1041,7 @@ static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,
   p->tcp.chksum = rte_ipv4_udptcp_cksum((void *) &p->ip, (void *) &p->tcp);
   
   /* send packet */
-  nicif_tx_send(new_tail, 0);
+  nicif_tx_send(new_tail);
   return 0;
 }
 

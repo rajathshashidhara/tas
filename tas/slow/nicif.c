@@ -34,11 +34,21 @@
 #include <utils_timeout.h>
 #include <utils_sync.h>
 #include "internal.h"
+#include "pipeline.h"
 
 #include <rte_config.h>
+#include <rte_ring.h>
+#include <rte_mbuf.h>
+#include <rte_mempool.h>
 #include <rte_hash_crc.h>
 
 #define PKTBUF_SIZE 1536
+
+extern struct rte_ring *sp_rx_ring;
+extern struct rte_ring *sp_tx_ring;
+extern struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
+extern struct rte_mempool *sp_pkt_mempool;
+extern struct rte_hash *flow_lookup_table;
 
 struct nic_buffer {
   uint64_t addr;
@@ -52,7 +62,6 @@ struct flow_id_item {
 
 static int adminq_init(void);
 static int adminq_init_core(uint16_t core);
-static inline int rxq_poll(void);
 static inline void process_packet(const void *buf, uint16_t len,
     uint32_t fn_core, uint16_t flow_group);
 static inline volatile struct flextcp_pl_ktx *ktx_try_alloc(uint32_t core,
@@ -110,17 +119,22 @@ int nicif_init(void)
 
 unsigned nicif_poll(void)
 {
-  unsigned i, ret = 0/*, nonsuc = 0*/;
-  int x;
+  unsigned i, ret;
 
+  struct workptr_t pkt_ptr;
+  struct rte_mbuf  *pkt;
+
+  ret = 0;
   for (i = 0; i < 512; i++) {
-    x = rxq_poll();
-    /*if (x == -1 && ++nonsuc > 2 * fn_cores)
-      break;
-    else if (x != -1)
-      nonsuc = 0;*/
+    if (rte_ring_sc_dequeue(sp_rx_ring, (void **) &pkt_ptr.__rawptr) < 0)
+      continue;
 
-    ret += (x == -1 ? 0 : 1);
+    pkt = (struct rte_mbuf *) pkt_ptr.addr;
+    process_packet(rte_pktmbuf_mtod(pkt), rte_pktmbuf_pkt_len(pkt), 0, pkt_ptr.flow_grp);
+
+    rte_pktmbuf_free_seg(pkt);    // NOTE: We do not handle chained mbufs here!
+
+    ret++;
   }
 
   return ret;
@@ -179,69 +193,74 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
     uint32_t flags, uint32_t rate, uint32_t fn_core, uint16_t flow_group,
     uint32_t *pf_id)
 {
-  struct flextcp_pl_flowst *fs;
+  struct flextcp_pl_flowst_conn_t *fs_conn;
+  struct flextcp_pl_flowst_tcp_t  *fs_tcp;
+  struct flextcp_pl_flowst_mem_t  *fs_mem;
   beui32_t lip = t_beui32(ip_local), rip = t_beui32(ip_remote);
   beui16_t lp = t_beui16(port_local), rp = t_beui16(port_remote);
-  uint32_t i, d, f_id, hash;
+  uint32_t i, d, hash;
+  int32_t f_id;
   struct flextcp_pl_flowhte *hte = fp_state->flowht;
 
-  /* allocate flow id */
-  if (flow_id_alloc(&f_id) != 0) {
-    fprintf(stderr, "nicif_connection_add: allocating flow state\n");
-    return -1;
-  }
+  struct {
+    ip_addr_t lip;
+    ip_addr_t rip;
+    beui16_t lp;
+    beui16_t rp;
+  } __attribute__((packed)) key_4tuple =
+      { .lip = lip, .rip = rip, .lp = lp, .rp = rp };
 
-  /* calculate hash and find empty slot */
-  hash = flow_hash(lip, lp, rip, rp);
-  if (flow_slot_alloc(hash, &i, &d) != 0) {
-    flow_id_free(f_id);
+  /* allocate flow id */  
+  f_id = rte_hash_add_key(flow_lookup_table, &key_4tuple);
+  if (f_id < 0) {
     fprintf(stderr, "nicif_connection_add: allocating slot failed\n");
-    return -1;
+    return -1;    
   }
-  assert(i < FLEXNIC_PL_FLOWHT_ENTRIES);
-  assert(d < FLEXNIC_PL_FLOWHT_NBSZ);
 
   if ((flags & NICIF_CONN_ECN) == NICIF_CONN_ECN) {
     rx_base |= FLEXNIC_PL_FLOWST_ECN;
   }
 
-  fs = &fp_state->flowst[f_id];
-  fs->opaque = app_opaque;
-  fs->rx_base_sp = rx_base;
-  fs->tx_base = tx_base;
-  fs->rx_len = rx_len;
-  fs->tx_len = tx_len;
-  memcpy(&fs->remote_mac, &mac_remote, ETH_ADDR_LEN);
-  fs->db_id = db;
+  fs_conn = &fp_state->flows_conn_info[f_id];
+  fs_conn->flow_group = flow_group;
+  memcpy(&fs_conn->remote_mac, &mac_remote, ETH_ADDR_LEN);
+  fs_conn->flags = (((flags & NICIF_CONN_ECN) == NICIF_CONN_ECN) ? FLEXNIC_PL_FLOWST_ECN : 0);
+  fs_conn->local_ip = lip;
+  fs_conn->remote_ip = rip;
+  fs_conn->local_port = lp;
+  fs_conn->remote_port = rp;
+  fs_conn->seq_delta = local_seq;
+  fs_conn->ack_delta = remote_seq;
 
-  fs->local_ip = lip;
-  fs->remote_ip = rip;
-  fs->local_port = lp;
-  fs->remote_port = rp;
+  fs_mem = &fp_state->flows_mem_info[f_id];
+  fs_mem->opaque = app_opaque;
+  fs_mem->rx_base = rx_base;
+  fs_mem->tx_base = tx_base;
+  fs_mem->rx_len = rx_len;
+  fs_mem->tx_len = tx_len;
+  fs_mem->seq_delta = local_seq;
+  fs_mem->ack_delta = remote_seq;
+  fs_mem->db_id = db;
 
-  fs->flow_group = flow_group;
-  fs->lock = 0;
-  fs->bump_seq = 0;
-
-  fs->rx_avail = rx_len;
-  fs->rx_next_pos = 0;
-  fs->rx_next_seq = remote_seq;
-  fs->rx_remote_avail = rx_len; /* XXX */
-
-  fs->tx_sent = 0;
-  fs->tx_next_pos = 0;
-  fs->tx_next_seq = local_seq;
-  fs->tx_avail = 0;
-  fs->tx_next_ts = 0;
-  fs->tx_rate = rate;
-  fs->rtt_est = 0;
-
-  /* write to empty entry first */
-  MEM_BARRIER();
-  hte[i].flow_hash = hash;
-  MEM_BARRIER();
-  hte[i].flow_id = FLEXNIC_PL_FLOWHTE_VALID |
-      (d << FLEXNIC_PL_FLOWHTE_POSSHIFT) | f_id;
+  fs_tcp = &fp_state->flows_tcp_state[f_id];
+  fs_tcp->tx_avail = 0;
+  fs_tcp->tx_remote_avail = rx_len; /* XXX */
+  fs_tcp->tx_sent = 0;
+  fs_tcp->tx_next_seq = 0;
+  fs_tcp->tx_next_ts = 0;
+  fs_tcp->flags = 0;
+  fs_tcp->dupack_cnt = 0;
+  fs_tcp->rx_avail = rx_len;
+  fs_tcp->rx_next_seq = 0;
+  fs_tcp->rx_ooo_len = 0;
+  fs_tcp->rx_ooo_start = 0;
+  fs_tcp->cnt_tx_drops = 0;
+  fs_tcp->cnt_rx_acks = 0;
+  fs_tcp->cnt_rx_ack_bytes = 0;
+  fs_tcp->cnt_rx_ecn_bytes = 0;
+  fs_tcp->rtt_est = 0;
+  fs_tcp->qm_avail = 0;
+  fs_tcp->tx_rate = rate;
 
   *pf_id = f_id;
   return 0;
@@ -250,34 +269,37 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
 int nicif_connection_disable(uint32_t f_id, uint32_t *tx_seq, uint32_t *rx_seq,
     int *tx_closed, int *rx_closed)
 {
-  struct flextcp_pl_flowst *fs = &fp_state->flowst[f_id];
+  struct flextcp_pl_flowst_conn_t *fs_conn = &fp_state->flows_conn_info[f_id];
+  struct flextcp_pl_flowst_tcp_t *fs_tcp = &fp_state->flows_tcp_state[f_id];
 
-  util_spin_lock(&fs->lock);
+  *tx_seq = fs_tcp->tx_next_seq;
+  *rx_seq = fs_tcp->rx_next_seq;
 
-  *tx_seq = fs->tx_next_seq;
-  *rx_seq = fs->rx_next_seq;
-  fs->rx_base_sp |= FLEXNIC_PL_FLOWST_SLOWPATH;
+  *rx_closed = !!(fs_tcp->rx_base_sp & FLEXNIC_PL_FLOWST_RXFIN);
+  *tx_closed = !!(fs_tcp->rx_base_sp & FLEXNIC_PL_FLOWST_TXFIN) &&
+      fs_tcp->tx_sent == 0;
 
-  *rx_closed = !!(fs->rx_base_sp & FLEXNIC_PL_FLOWST_RXFIN);
-  *tx_closed = !!(fs->rx_base_sp & FLEXNIC_PL_FLOWST_TXFIN) &&
-      fs->tx_sent == 0;
+  struct {
+    ip_addr_t lip;
+    ip_addr_t rip;
+    beui16_t lp;
+    beui16_t rp;
+  } __attribute__((packed)) key_4tuple =
+      { .lip = fs_conn->local_ip, .rip = fs_conn->remote_ip, .lp = fs_conn->local_port, .rp = fs_conn->remote_port };
 
-  util_spin_unlock(&fs->lock);
-
-  flow_slot_clear(f_id, fs->local_ip, fs->local_port, fs->remote_ip,
-      fs->remote_port);
+  rte_hash_del_key(flow_lookup_table, &key_4tuple);
   return 0;
 }
 
 void nicif_connection_free(uint32_t f_id)
 {
-  flow_id_free(f_id);
+
 }
 
 /** Move flow to new db */
 int nicif_connection_move(uint32_t dst_db, uint32_t f_id)
 {
-  fp_state->flowst[f_id].db_id = dst_db;
+  fp_state->flows_mem_info[f_id].db_id = dst_db;
   return 0;
 }
 
@@ -285,14 +307,14 @@ int nicif_connection_move(uint32_t dst_db, uint32_t f_id)
 int nicif_connection_stats(uint32_t f_id,
     struct nicif_connection_stats *p_stats)
 {
-  struct flextcp_pl_flowst *fs;
+  struct flextcp_pl_flowst_tcp_t *fs;
 
   if (f_id >= FLEXNIC_PL_FLOWST_NUM) {
     fprintf(stderr, "nicif_connection_stats: bad flow id\n");
     return -1;
   }
 
-  fs = &fp_state->flowst[f_id];
+  fs = &fp_state->flows_tcp_state[f_id];
   p_stats->c_drops = fs->cnt_tx_drops;
   p_stats->c_acks = fs->cnt_rx_acks;
   p_stats->c_ackb = fs->cnt_rx_ack_bytes;
@@ -313,14 +335,14 @@ int nicif_connection_stats(uint32_t f_id,
  */
 int nicif_connection_setrate(uint32_t f_id, uint32_t rate)
 {
-  struct flextcp_pl_flowst *fs;
+  struct flextcp_pl_flowst_tcp_t *fs;
 
   if (f_id >= FLEXNIC_PL_FLOWST_NUM) {
     fprintf(stderr, "nicif_connection_stats: bad flow id\n");
     return -1;
   }
 
-  fs = &fp_state->flowst[f_id];
+  fs = &fp_state->flows_tcp_state[f_id];
   fs->tx_rate = rate;
 
   return 0;
@@ -329,52 +351,51 @@ int nicif_connection_setrate(uint32_t f_id, uint32_t rate)
 /** Mark flow for retransmit after timeout. */
 int nicif_connection_retransmit(uint32_t f_id, uint16_t flow_group)
 {
-  volatile struct flextcp_pl_ktx *ktx;
-  struct nic_buffer *buf;
-  uint32_t tail;
-  uint16_t core = fp_state->flow_group_steering[flow_group];
+  int ret;
+  struct workptr_t ptr;
+  
+  ptr.type = WORK_TYPE_RETX;
+  ptr.flags = 0;
+  ptr.flow_grp = flow_group;
+  ptr.addr = f_id;
 
-  if ((ktx = ktx_try_alloc(core, &buf, &tail)) == NULL) {
+  ret = rte_ring_mp_enqueue(protocol_workqueues[flow_group], (void *) ptr.__rawptr);
+  if (ret < 0)
     return -1;
-  }
-  txq_tail[core] = tail;
-
-  ktx->msg.connretran.flow_id = f_id;
-  MEM_BARRIER();
-  ktx->type = FLEXTCP_PL_KTX_CONNRETRAN;
-
-  notify_fastpath_core(core);
 
   return 0;
 }
 
 /** Allocate transmit buffer */
-int nicif_tx_alloc(uint16_t len, void **pbuf, uint32_t *opaque)
+int nicif_tx_alloc(uint16_t len, void **pbuf, void **opaque)
 {
-  volatile struct flextcp_pl_ktx *ktx;
-  struct nic_buffer *buf;
+  struct rte_mbuf *pkt;
 
-  if ((ktx = ktx_try_alloc(0, &buf, opaque)) == NULL) {
+  pkt = rte_pktmbuf_alloc(sp_pkt_mempool);
+  if (pkt == NULL)
     return -1;
-  }
 
-  ktx->msg.packet.addr = buf->addr;
-  ktx->msg.packet.len = len;
-  *pbuf = buf->buf;
+  rte_pktmbuf_pkt_len(pkt) = len;
+  rte_pktmbuf_data_len(pkt) = len;
+
+  *pbuf = rte_pktmbuf_mtod(pkt);
+  *opaque = pkt;
+
   return 0;
 }
 
 /** Actually send out transmit buffer (lens need to match) */
-void nicif_tx_send(uint32_t opaque, int no_ts)
+void nicif_tx_send(void *opaque)
 {
-  uint32_t tail = (opaque == 0 ? txq_len - 1 : opaque - 1);
-  volatile struct flextcp_pl_ktx *ktx = &txq_base[0][tail];
+  int ret;
+  struct rte_mbuf *pkt = (struct rte_mbuf *) opaque;
 
-  MEM_BARRIER();
-  ktx->type = (!no_ts ? FLEXTCP_PL_KTX_PACKET : FLEXTCP_PL_KTX_PACKET_NOTS);
-  txq_tail[0] = opaque;
+  ret = rte_ring_sp_enqueue(sp_tx_ring, pkt);
   
-  notify_fastpath_core(0);
+  /* Free packet if tx is unsuccessful */
+  if (ret < 0) {
+    rte_pktmbuf_free_seg(pkt);
+  }
 }
 
 static int adminq_init(void)

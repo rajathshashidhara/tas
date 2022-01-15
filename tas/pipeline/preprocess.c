@@ -141,7 +141,7 @@ static unsigned preprocess_rx(uint16_t rxq)
   /* Prefetch packet contents (1 cache line) */
   for (i = 0; i < num_rx; i++) {
     rte_prefetch0(rte_pktmbuf_mtod(pkts[i]));
-    lookup_4tuples[i] = (void *) rte_pktmbuf_mtod_offset(pkts[i], offsetof(struct pkt_tcp, ip.src));
+    keys_4tuple[i] = (void *) rte_pktmbuf_mtod_offset(pkts[i], offsetof(struct pkt_tcp, ip.src));
   }
 
   rte_hash_lookup_bulk(flow_lookup_table, keys_4tuple, num_rx, flow_ids);
@@ -176,7 +176,7 @@ static unsigned preprocess_rx(uint16_t rxq)
     ret = rte_ring_mp_enqueue_burst(preproc_queues[NUM_FLOWGRPS], sp_pkts, num_sp, NULL);
 
     for (i = ret; i < num_sp; i++)
-      rte_pktmbuf_free_seg(sp_pkts[i]);   // NOTE: We do not handle chained mbufs here!
+      rte_pktmbuf_free_seg(sp_pkts[i]);     // NOTE: We do not handle chained mbufs here!
     }
   }
 

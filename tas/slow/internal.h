@@ -238,7 +238,7 @@ int nicif_connection_retransmit(uint32_t f_id, uint16_t core);
  *
  * @return 0 on success, <0 else
  */
-int nicif_tx_alloc(uint16_t len, void **buf, uint32_t *opaque);
+int nicif_tx_alloc(uint16_t len, void **buf, void **opaque);
 
 /**
  * Actually send out transmit buffer (lens need to match).
@@ -248,7 +248,7 @@ int nicif_tx_alloc(uint16_t len, void **buf, uint32_t *opaque);
  *
  * @return 0 on success, <0 else
  */
-void nicif_tx_send(uint32_t opaque, int no_ts);
+void nicif_tx_send(void *opaque);
 
 /** @} */
 
