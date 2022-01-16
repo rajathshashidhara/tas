@@ -302,9 +302,9 @@ struct flextcp_pl_flowst_tcp_t {
       uint32_t cnt_rx_ecn_bytes;
       uint32_t rtt_est;
       
-      /*> QM state */
-      uint32_t qm_avail;
-      uint32_t tx_rate;
+      // /*> QM state */
+      // uint32_t qm_avail;
+      // uint32_t tx_rate;
     } __attribute__((packed));
 
     uint32_t rsvd[16];

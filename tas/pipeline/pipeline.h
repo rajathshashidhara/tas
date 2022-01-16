@@ -17,20 +17,28 @@ enum {
 #define  WORK_FLAG_FIN                  (1 << 3)     /*> Marked connection as FIN          */
 #define  WORK_FLAG_QM_FORCE             (1 << 4)     /*> Force QM to schedule transmission */
 #define  WORK_FLAG_IP_ECE               (1 << 5)     /*> CE notified in IP header          */
+#define  WORk_FLAG_RESULT               (1 << 7)     /*> Processed work                    */
 
 struct workptr_t {
   union {
     struct {
+      uint64_t addr:42;           /*> Virtual address only uses 48 bits. Also, we use cache-aligned addresses further saving 6 bits. */
+      uint64_t flow_id:18;
+      uint64_t flow_grp:2;
       uint64_t type:2;
-      uint64_t flow_grp:8;
-      uint64_t flags:6;           /* Flags are interface specific */
-      uint64_t addr:48;
     } __attribute__ ((packed));
     uintptr_t __rawptr;
   };
 };
 STATIC_ASSERT(sizeof(work_ptr_t) == sizeof(uintptr_t), workptr_size);
 
+static inline void *get_work_address(struct workptr_t wptr)
+{
+  intptr_t p;
+
+  p = (((intptr_t) wptr.__rawptr) << 22) >> 22; /*> Sign extend the address to canonical form */
+  return ((void*) p);
+}
 struct work_t {
   union {
     struct {
@@ -55,6 +63,7 @@ struct work_t {
       uint16_t dma_off;
 
       uint32_t qm_bump;
+      struct rte_mbuf *mbuf;
     } __attribute__ ((packed));
     
     uint32_t __raw[16];

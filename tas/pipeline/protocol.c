@@ -2,13 +2,26 @@
 #include <stdlib.h>
 #include <rte_config.h>
 #include <rte_branch_prediction.h>
+#include <rte_cycles.h>
 #include <rte_ring.h>
 #include <rte_mbuf.h>
+
+#include "utils_reorder.h"
 
 #include "tas_memif.h"
 #include "pipeline.h"
 
 #define TCP_MAX_RTT 100000
+
+#define BATCH_SIZE 32
+extern struct utils_reorder_buffer *rob[MAX_FLOWGRPS];
+extern struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
+extern struct rte_ring *postproc_workqueue;
+
+struct protocol_thread_conf {
+  uint16_t flow_grp_start;
+  uint16_t nb_flow_grp;
+};
 
 //#define SKIP_ACK 1
 
@@ -179,7 +192,7 @@ static void flows_gobackN_retransmit(struct flextcp_pl_flowst_tcp_t *fs)
 }
 
 static void flows_retx(struct flextcp_pl_flowst_tcp_t *fs,
-                       uint32_t *qm_bump)
+                       struct work_t *work)
 {
   uint32_t old_avail, new_avail;
 
@@ -187,7 +200,7 @@ static void flows_retx(struct flextcp_pl_flowst_tcp_t *fs,
   flows_gobackN_retransmit(fs);
   new_avail = tcp_txavail(fs, 0);
 
-  *qm_bump = (old_avail < new_avail) ? (new_avail - old_avail) : 0;
+  work->qm_bump = (old_avail < new_avail) ? (new_avail - old_avail) : 0;
 }
 
 static void flows_ack(struct flextcp_pl_flowst_tcp_t *fs,
@@ -403,7 +416,7 @@ static void flows_seg(struct flextcp_pl_flowst_tcp_t *fs,
     }
 
     work->rx_bump = rx_bump;
-    flags |= (WORK_RESULT_DMA_PAYLOAD | WORK_RESULT_DMA_ACDESC);
+    flags |= (WORK_FLAG_DMA_PAYLOAD | WORK_FLAG_DMA_ACDESC);
   }
 
   fs->tx_remote_avail = work->win;
@@ -442,4 +455,149 @@ finalize:
   }
 
   work->flags = flags;
+}
+
+static uint32_t generate_timestamp(uint64_t tsc) {
+  static uint64_t freq = 0;
+
+  if (freq == 0)
+    freq = rte_get_tsc_hz();
+
+  cycles *= 1000000ULL;
+  cycles /= freq;
+  return cycles;
+}
+
+static unsigned poll_reorder_queue(unsigned flow_grp,
+        struct workptr_t *results, unsigned max_num,
+        unsigned ts)
+{
+  struct workptr_t workptrs[BATCH_SIZE];
+  unsigned i, num;
+
+  struct work_t *work;
+  struct flextcp_pl_flowst_tcp_t *fs;
+
+  num = utils_reorder_drain(rob[flow_grp], (void **) workptrs, max_num);
+  if (num == 0)
+    return 0;
+
+  /* Prefetch flowstate */
+  for (i = 0; i < num; i++) {
+    work = (struct work_t *) workptrs[i].addr;
+    fs = &fp_state->flowst_tcp_state[work->flow_id];
+    rte_prefetch0(fs);
+  }
+
+  /* Process RX work */
+  for (i = 0; i < num; i++) {
+    work = (struct work_t *) workptrs[i].addr;
+    fs = &fp_state->flowst_tcp_state[work->flow_id];
+
+    if (work->len == 0) {
+      flows_ack(fs, work, ts);
+    }
+    else {
+      flows_seg(fs, work, ts);
+    }
+
+    results[i] = workptrs[i];
+  }
+
+  return num;
+}
+
+static unsigned poll_protocol_workqueues(unsigned flow_grp,
+        struct workptr_t *results, unsigned max_num,
+        unsigned ts)
+{
+  struct workptr_t workptrs[BATCH_SIZE];
+  unsigned i, num, num_enq;
+  uint32_t retx_result;
+  int ret;
+
+  struct work_t *work;
+  struct flextcp_pl_flowst_tcp_t *fs;
+
+  num = rte_ring_sc_dequeue_burst(protocol_workqueues[flow_grp], (void **) workptrs, max_num);
+  if (num == 0)
+    return 0;
+
+  /* Prefetch */
+  for (i = 0; i < num; i++) {
+    work = (struct work_t *) get_work_address(workptrs[i]);
+    fs = &fp_state->flowst_tcp_state[workptrs[i].flow_id];
+
+    rte_prefetch0(work);
+    rte_prefetch0(fs);
+  }
+
+  /* Handle work */
+  for (i = 0; i < num; i++) {
+    work = (struct work_t *) get_work_address(workptrs[i]);
+    fs = &fp_state->flowst_tcp_state[workptrs[i].flow_id];
+
+    switch (workptrs[i].type) {
+    case WORK_TYPE_RX:
+      ret = utils_reorder_insert(rob[workptrs[i].flow_grp], workptrs[i], work->reorder_seqn);
+      if (ret != 0) {
+        results[num_enq++] = workptrs[i];   /* Add to free */
+      }
+      break;
+
+    case WORK_TYPE_TX:
+      flows_tx(fs, work, ts);
+      results[num_enq++] = workptrs[i];
+      break;
+    
+    case WORK_TYPE_AC:
+      flows_ac(fs, work);
+      results[num_enq++] = workptrs[i];
+      break;
+
+    case WORK_TYPE_RETX:
+      flows_retx(fs, &retx_result);
+      results[num_enq++] = workptrs[i];
+      break;      
+    }
+  }
+
+  return num_enq;
+}
+
+int protocol_thread(void *args)
+{
+  unsigned i, num, num_enq;
+  unsigned fgp, fgp_x, fgp_y;
+  struct protocol_thread_conf *conf = (struct protocol_thread_conf *) args;
+  struct workptr_t work[BATCH_SIZE];
+  struct workptr_t result[BATCH_SIZE];
+
+  struct flextcp_pl_flowst_tcp_t *fs;
+  struct work_t *work;
+
+  uint64_t cyc;
+  uint32_t ts;
+
+  fgp_x = conf->flow_grp_start;
+  fgp_y = fgp_x + conf->nb_flow_grp;
+  
+  fgp = fgp_x;
+  while (1) {
+    cyc = rte_get_tsc_cycles();
+    ts = qman_timestamp(cyc);
+    num = 0;
+
+    num += poll_reorder_queue(fgp, result, BATCH_SIZE, ts);
+    num += poll_protocol_workqueues(fgp, &result[num], BATCH_SIZE - num, ts);
+
+    num_enq = rte_ring_sp_enqueue_burst(postproc_workqueue, result, num);
+    if (num < num_enq) {
+      /* TODO:How to handle this? */
+      fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+      abort();
+    }
+  }
+
+  return EXIT_SUCCESS;
 }

@@ -8,10 +8,10 @@
 
 struct utils_reorder_buffer *
 utils_reorder_init(
-        unsigned socket_id, unsigned int size)
+        unsigned socket_id, unsigned size)
 {
   struct utils_reorder_buffer *rob = NULL;
-  const unsigned int bufsize = sizeof(struct utils_reorder_buffer)
+  const unsigned bufsize = sizeof(struct utils_reorder_buffer)
           + (2 * size * sizeof(void *));
 
   if (!rte_is_power_of_2(size)) {
@@ -50,7 +50,7 @@ reorder_fill_overflow(struct utils_reorder_buffer *b, unsigned n)
 	struct cir_buffer *order_buf = &b->order_buf,
 			*ready_buf = &b->ready_buf;
 
-	unsigned int order_head_adv = 0;
+	unsigned order_head_adv = 0;
 
 	/*
 	 * move at least n packets to ready buffer, assuming ready buffer
@@ -146,11 +146,11 @@ utils_reorder_insert(
 	return 0;
 }
 
-unsigned int
+unsigned
 utils_reorder_drain(struct utils_reorder_buffer *b, void **bufs,
 		unsigned max_bufs)
 {
-  unsigned int drain_cnt = 0;
+  unsigned drain_cnt = 0;
 
 	struct cir_buffer *order_buf = &b->order_buf,
 			*ready_buf = &b->ready_buf;
