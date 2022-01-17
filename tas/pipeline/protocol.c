@@ -136,7 +136,7 @@ static void flows_tx(struct flextcp_pl_flowst_tcp_t *fs,
 
   work->seq = fs->tx_next_seq;
   work->ack = fs->rx_next_seq;
-  work->win = MIN(0xFFFF, fs->rx_avail);
+  work->win = MIN(0xffff, fs->rx_avail);
   work->ts_val = ts;
   work->ts_ecr = fs->tx_next_ts;
   work->tcp_flags = (fin ? TCP_FIN : 0);

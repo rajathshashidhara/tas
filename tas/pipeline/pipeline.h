@@ -98,7 +98,7 @@ STATIC_ASSERT(sizeof(dma_cmd_t) == RTE_CACHE_LINE_SIZE, dma_cmd_size);
 
 #define SCHED_FLAG_TX_FORCE   (1 << 0)
 
-static sched_tx_t {
+struct sched_tx_t {
   union {
     struct {
       uint8_t  type;
@@ -107,8 +107,21 @@ static sched_tx_t {
       uint32_t flow_id:24;
       uint32_t flow_grp:8;
     } __attribute__((packed));
-    uint64_t __raw;
+    void *__raw;
   };
 } __attribute__((packed));
-STATIC_ASSERT(sizeof(sched_tx_t) == sizeof(uintptr_t), sched_tx_size);
+STATIC_ASSERT(sizeof(sched_tx_t) == sizeof(void *), sched_tx_size);
+
+struct sched_bump_t {
+  union {
+    struct {
+      uint32_t bump;
+      uint32_t flow_id:24;
+      uint32_t flow_grp:8;
+    } __attribute__((packed));
+    void *__raw;
+  };
+} __attribute__((packed));
+STATIC_ASSERT(sizeof(sched_bump_t) == sizeof(void *), sched_bump_size);
+
 #endif /* TAS_PIPELINE_H_ */

@@ -6,6 +6,7 @@
 #include <rte_mbuf_ptype.h>
 #include <rte_hash.h>
 
+#include "utils.h"
 #include "pipeline.h"
 #include "packet_defs.h"
 
@@ -19,6 +20,12 @@ extern struct rte_ring *sched_queues[MAX_NB_TX];
 extern struct rte_mempool *tx_mbuf_pool;
 
 extern struct rte_hash *flow_lookup_table;
+
+#if RTE_VER_YEAR < 19
+  struct ether_addr eth_addr;
+#else
+  struct rte_ether_addr eth_addr;
+#endif
 
 struct preproc_thread_conf {
   uint16_t nb_rx;
@@ -45,24 +52,80 @@ static int validate_pkt_header(struct rte_mbuf *buf)
   return cond;
 }
 
-static void generate_pkt_summary(struct rte_mbuf *pkt)
+static void generate_pkt_summary(struct rte_mbuf *pkt,
+            struct flextcp_pl_flowst_conn_t *conn_info)
 {
   struct work_t *w = (struct work_t *) pkt->buf_addr; // Use the headroom to store metadata
   struct pkt_tcp_ts *p = (struct pkt_tcp_ts *) rte_pktmbuf_mtod(pkt);
 
-  // TODO: Not yet implemented!
+  w->seq = f_beui32(p->tcp.seqno) - conn_info->ack_delta;
+  w->ack = f_beui32(p->tcp.ackno) - conn_info->seq_delta;
+  w->tcp_flags = TCPH_FLAGS(&p->tcp);
+  w->win = f_beui16(p->tcp.wnd);
+  w->ts_val = f_beui32(p->ts_opt.ts_val);
+  w->ts_ecr = f_beui32(p->ts_opt.ts_ecr);
+
+  if (IPH_ECN(&p->ip) == IP_ECN_CE) {
+    w->flags |= WORK_FLAG_IP_ECE;
+  }
 }
 
 static void prepare_ack_header(struct rte_mbuf *pkt)
 {
-  // TODO: Not yet implemented!
+  struct eth_addr eth;
+  ip_addr_t ip;
+  beui16_t port;
+  struct pkt_tcp_ts *p = (struct pkt_tcp_ts *) rte_pktmbuf_mtod(pkt);
+
+  /* swap addresses */
+  eth = p->eth.src;
+  p->eth.src = p->eth.dest;
+  p->eth.dest = eth;
+  ip = p->ip.src;
+  p->ip.src = p->ip.dest;
+  p->ip.dest = ip;
+  port = p->tcp.src;
+  p->tcp.src = p->tcp.dest;
+  p->tcp.dest = port;
+
+  /* mark ACKs as ECN in-capable */
+  IPH_ECN_SET(&p->ip, IP_ECN_NONE);
+
+  p->ip.len = t_beui16(sizeof(struct pkt_tcp_ts) - offsetof(struct pkt_tcp_ts, ip));
+  p->ip.ttl = 0xff;
 }
 
-static void prepare_seg_header(struct sched_tx_t *tx,
-                               struct rte_mbuf *pkt,
+static void prepare_seg_header(struct rte_mbuf *pkt,
                                struct flextcp_pl_flowst_conn_t *conn_info)
 {
-  // TODO: Not yet implemented!
+  struct pkt_tcp_ts *p = (struct pkt_tcp_ts *) rte_pktmbuf_mtod(pkt);
+
+  p->eth.dest = conn_info->remote_mac;
+  memcpy(&p->eth.src, &eth_addr, ETH_ADDR_LEN);
+  p->eth.type = t_beui16(ETH_TYPE_IP);
+
+  IPH_VHL_SET(&p->ip, 4, 5);
+  p->ip._tos = 0;
+  p->ip.len = t_beui16(sizeof(struct pkt_tcp_ts) - offsetof(struct pkt_tcp_ts, ip));    /*> correct value incl. pyld. filled by postproc */
+  p->ip.id = t_beui16(3); /* TODO: not sure why we have 3 here */
+  p->ip.offset = t_beui16(0);
+  p->ip.ttl = 0xff;
+  p->ip.proto = IP_PROTO_TCP;
+  p->ip.chksum = 0;
+  p->ip.src = fs->local_ip;
+  p->ip.dest = fs->remote_ip;
+
+  /* mark as ECN capable if flow marked so */
+  if ((conn_info->flags & FLEXNIC_PL_FLOWST_ECN) == FLEXNIC_PL_FLOWST_ECN) {
+    IPH_ECN_SET(&p->ip, IP_ECN_ECT0);
+  }
+
+  p->tcp.src = fs->local_port;
+  p->tcp.dest = fs->remote_port;
+
+  p->ts_opt.kind = TCP_OPT_TIMESTAMP;
+  p->ts_opt.length = sizeof(struct tcp_timestamp_opt);
+  p->pad = 0;
 }
 
 static void prepare_tx_work_desc(struct sched_tx_t *tx,
