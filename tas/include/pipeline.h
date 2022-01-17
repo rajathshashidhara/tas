@@ -6,6 +6,7 @@
 #include <rte_ring.h>
 
 #include "utils.h"
+#include "tas_memif.h"
 
 #define NUM_SEQ_CTXS          2
 #define NUM_FLOWGRPS          NUM_SEQ_CTXS
@@ -26,8 +27,8 @@ STATIC_ASSERT(RTE_CACHE_LINE_SIZE == 64, cacheline_size);
  * - Reorders packets in the order of sequence numbers before egress.
  */
 
-#define NBI_DIR_RX    0x0
-#define NBI_DIR_TX    0x1
+#define NBI_DIR_RX    0x0         /*> network -> fastpath */
+#define NBI_DIR_TX    0x1         /*> fastpath -> network */
 
 struct nbi_pkt_t {
   union {
@@ -47,6 +48,13 @@ extern struct rte_ring *nbi_rx_queue;
 extern struct rte_ring *nbi_tx_queue;
 
 /******************************************************************/
+
+/**
+ * Core pipeline.
+ * 
+ * Includes preprocess/protocol/postprocess blocks.
+ * 
+ */
 
 enum {
   WORK_TYPE_RX   = 0,
@@ -107,6 +115,49 @@ struct work_t {
   };
 };
 STATIC_ASSERT(sizeof(struct work_t) == RTE_CACHE_LINE_SIZE, work_size);
+
+extern struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
+
+/******************************************************************/
+
+/**
+ * APPCTX - Application Context.
+ * 
+ * Interacts with the application contexts.
+ * 
+ * - Polls application contexts for new updates (ATX).
+ * - Flushes bumps to application contexts (ARX).
+ */
+
+#define ACTX_DIR_RX    0x0      /*> fastpath -> app */
+#define ACTX_DIR_TX    0x1      /*> app -> fastpath */
+
+struct actxptr_t {
+  union {
+    struct {
+      uint64_t desc:42;       /*> Descriptor address  */
+      uint64_t seqno:16;      /*> Sequence number     */
+      uint64_t db_id:5;       /*> Sequencer context   */
+      uint64_t dir:1;         /*> ACTX_DIR_           */
+    } __attribute__ ((packed));
+    void *__rawptr;
+  };
+};
+STATIC_ASSERT(sizeof(struct workptr_t) == sizeof(uintptr_t), workptr_size);
+
+struct appctx_desc_t {
+  union {
+    struct flextcp_pl_atx atx;
+    struct flextcp_pl_arx arx;
+    uint32_t __raw[16];      /*> Cacheline size */
+  };
+};
+STATIC_ASSERT(sizeof(struct appctx_desc_t) == RTE_CACHE_LINE_SIZE, actx_desc_size);
+
+extern struct rte_ring *atx_ring;
+extern struct rte_ring *arx_ring;
+
+/******************************************************************/
 
 struct dma_cmd_t {
   union {

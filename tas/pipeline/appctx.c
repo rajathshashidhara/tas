@@ -1,9 +1,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <rte_config.h>
+#include <rte_common.h>
+#include <rte_cycles.h>
 #include <rte_atomic.h>
 #include <rte_ring.h>
 #include <rte_mempool.h>
+#include <rte_memcpy.h>
+#include <rte_prefetch.h>
 
 #include "tas_memif.h"
 #include "dma.h"
@@ -12,22 +16,12 @@
 extern struct rte_mempool *arx_desc_pool;        /*> Pool for RX APPCTX descriptors */
 extern struct rte_mempool *atx_desc_pool;        /*> Pool for TX APPCTX descriptors */
 
-extern struct rte_ring *atx_ring;
-extern struct rte_ring *arx_ring;
-
 extern void notify_appctx(struct flextcp_pl_appctx *ctx, uint64_t tsc);
 
 #define BATCH_SIZE      16
-struct appctx_desc_t {
-  union {
-    struct flextcp_pl_atx atx;
-    struct flextcp_pl_arx arx;
-    uint32_t __raw[16];      /*> Cacheline size */
-  };
-};
 
 static unsigned poll_atx_queue(uint16_t atxq,
-    struct appctx_desc_t *desc[BATCH_SIZE], unsigned k)
+    struct appctx_desc_t **desc, unsigned max_num)
 {
   unsigned i;
   struct flextcp_pl_appctx *actx = &fp_state->appctx[0][atxq];
@@ -38,7 +32,7 @@ static unsigned poll_atx_queue(uint16_t atxq,
   if (actx->tx_len == 0)
     return 0;
 
-  for (i = k; i < BATCH_SIZE; i++) {
+  for (i = 0; i < max_num; i++) {
     atx = dma_pointer(actx->tx_base + actx->tx_head, sizeof(struct flextcp_pl_atx));
     type = atx->type;
     
@@ -48,7 +42,7 @@ static unsigned poll_atx_queue(uint16_t atxq,
       break;
 
     /* Read descriptor */
-    dma_read(atx, sizeof(struct flextcp_pl_atx), desc[i]);
+    rte_memcpy(desc[i], atx, sizeof(struct flextcp_pl_atx));
 
     MEM_BARRIER();
     atx->type = 0;    /*> Mark entry as free! */
@@ -58,7 +52,7 @@ static unsigned poll_atx_queue(uint16_t atxq,
       actx->tx_head -= actx->tx_len;
   }
 
-  return i - k;
+  return i;
 }
 
 static unsigned poll_arx_queue_free_entries(uint16_t arxq)
@@ -93,13 +87,14 @@ static unsigned poll_arx_queue_free_entries(uint16_t arxq)
   return i;
 }
 
-static unsigned flush_arx_queues(struct appctx_desc_t *desc[BATCH_SIZE],
+static unsigned flush_arx_queues(struct actxptr_t *descptr,
     unsigned num, uint64_t tsc)
 {
   unsigned i, actx_id;
   uint32_t rxnhead;
   struct flextcp_pl_appctx *actx;
   struct flextcp_pl_arx *arx_entries[BATCH_SIZE];
+  struct appctx_desc_t *desc[BATCH_SIZE];
 
   /* Prefetch the descriptors */
   for (i = 0; i < num; i++) {
@@ -108,11 +103,12 @@ static unsigned flush_arx_queues(struct appctx_desc_t *desc[BATCH_SIZE],
 
   /* Allocate entries on CTX queue */
   for (i = 0; i < num; i++) {
-    actx_id = desc[i]->arx.msg.connupdate.db_id;
+    actx_id = descptr[i].db_id;
+    desc[i] = BUF_FROM_PTR(descptr[i]);
     actx = &fp_state->appctx[0][actx_id];
 
     if (actx->rx_avail == 0) {
-      fprintf(stderr, "%s: no space in app rx queue\n");
+      fprintf(stderr, "%s: no space in app rx queue\n", __func__);
       abort();
     }
 
@@ -135,15 +131,98 @@ static unsigned flush_arx_queues(struct appctx_desc_t *desc[BATCH_SIZE],
 
   /* Copy entries */
   for (i = 0; i < num; i++) {
-    *arx_entries[i] = desc[i];
+    rte_memcpy(arx_entries[i], desc[i], sizeof(struct flextcp_pl_arx));
   }
 
   /* Notify contexts */
   for (i = 0; i < num; i++) {
-    actx_id = desc[i]->arx.msg.connupdate.db_id;
+    actx_id = descptr[i].db_id;
     actx = &fp_state->appctx[0][actx_id];
     notify_appctx(actx, tsc);
   }
 
+  /* Free descriptors */
+  rte_mempool_put_bulk(arx_desc_pool, (void **) desc, num);
+
   return num;
+}
+
+struct appctx_thread_conf {
+
+};
+
+static void appctx_thread_init(struct appctx_thread_conf *conf)
+{
+  /* TODO: ? */
+  (void) conf;
+}
+
+static void move_to_front(void **arr, unsigned s, unsigned n)
+{
+  unsigned i;
+
+  i = 0;
+  while (s < n) {
+    arr[i++] = arr[s++];
+  }
+}
+
+int appctx_thread(void *args)
+{
+  unsigned n, q, q_poll, num_rx, num_alloc, num_tx, ret;
+  uint64_t tsc;
+  struct actxptr_t arx_descptr[BATCH_SIZE];
+  struct actxptr_t atx_descptr[BATCH_SIZE];
+  struct appctx_desc_t *atx_desc[BATCH_SIZE];
+  struct appctx_thread_conf *conf = (struct appctx_thread_conf *) args;
+
+  appctx_thread_init(conf);
+
+  q_poll = 0;
+  num_alloc = 0;
+  while (1) {
+    tsc = rte_get_tsc_cycles();
+    
+    /* Handle ARX descriptors */
+    num_rx = rte_ring_sc_dequeue_burst(arx_ring, (void **) arx_descptr, BATCH_SIZE, NULL);
+    flush_arx_queues(arx_descptr, num_rx, tsc);
+
+    /* Probe ARX free entries */
+    for (q = 0; q < FLEXNIC_PL_APPCTX_NUM; q++) {
+      poll_arx_queue_free_entries(q);
+    }
+
+    /* Allocate ATX descriptors */
+    if (num_alloc < BATCH_SIZE) {
+      if (rte_mempool_get_bulk(atx_desc_pool, (void **) &atx_desc[num_alloc], BATCH_SIZE - num_alloc) == 0) {
+        num_alloc = BATCH_SIZE;
+      }
+    }
+
+    /* Poll ATX queues */
+    num_tx = 0;
+    for (q = 0; q < FLEXNIC_PL_APPCTX_NUM && num_tx < num_alloc; q++) {
+      ret = poll_atx_queue(q_poll, &atx_desc[num_tx], num_alloc - num_tx);
+      for (n = 0; n < ret; n++) {
+        atx_descptr[n + num_tx].desc = BUF_TO_PTR(atx_desc[n + num_tx]);
+        atx_descptr[n + num_tx].db_id = q_poll;
+        atx_descptr[n + num_tx].dir = ACTX_DIR_TX;
+        atx_descptr[n + num_tx].seqno = 0;    /*> UNUSED */
+      }
+      num_tx += ret;
+      q_poll = (q_poll + 1) % FLEXNIC_PL_APPCTX_NUM;
+    }
+
+    if (num_tx == 0) {
+      continue;
+    }
+
+    /* Push ATX descriptors for processing */
+    ret = rte_ring_sp_enqueue_burst(atx_ring, (void **) atx_descptr, num_tx, NULL);
+    num_tx = MIN(ret, num_tx);
+    move_to_front((void **) atx_desc, num_tx, num_alloc - num_tx);
+    num_alloc -= num_tx;
+  }
+
+  return EXIT_SUCCESS;
 }
