@@ -525,7 +525,7 @@ static unsigned poll_protocol_workqueues(unsigned flow_grp,
 
   /* Prefetch */
   for (i = 0; i < num; i++) {
-    work = (struct work_t *) get_work_address(workptrs[i]);
+    work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
     fs = &fp_state->flowst_tcp_state[workptrs[i].flow_id];
 
     rte_prefetch0(work);
@@ -534,7 +534,7 @@ static unsigned poll_protocol_workqueues(unsigned flow_grp,
 
   /* Handle work */
   for (i = 0; i < num; i++) {
-    work = (struct work_t *) get_work_address(workptrs[i]);
+    work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
     fs = &fp_state->flowst_tcp_state[workptrs[i].flow_id];
 
     switch (workptrs[i].type) {

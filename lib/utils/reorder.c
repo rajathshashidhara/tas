@@ -89,7 +89,7 @@ reorder_fill_overflow(struct utils_reorder_buffer *b, unsigned n)
 
 int
 utils_reorder_insert(
-      struct utils_reorder_buffer *b, void *buf, uint32_t seq)
+      struct utils_reorder_buffer *b, void *buf, uint16_t seq)
 {
 	uint32_t offset, position;
 	struct cir_buffer *order_buf;

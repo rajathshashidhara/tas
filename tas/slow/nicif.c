@@ -38,6 +38,7 @@
 
 #include <rte_config.h>
 #include <rte_ring.h>
+#include <rte_hash.h>
 #include <rte_mbuf.h>
 #include <rte_mempool.h>
 #include <rte_hash_crc.h>
@@ -72,8 +73,8 @@ static inline int flow_slot_alloc(uint32_t h, uint32_t *i, uint32_t *d);
 static inline int flow_slot_clear(uint32_t f_id, ip_addr_t lip, beui16_t lp,
     ip_addr_t rip, beui16_t rp);
 static void flow_id_alloc_init(void);
-static int flow_id_alloc(uint32_t *fid);
-static void flow_id_free(uint32_t flow_id);
+static int flow_id_alloc(uint32_t *fid) __rte_unused;
+static void flow_id_free(uint32_t flow_id) __rte_unused;
 
 struct flow_id_item flow_id_items[FLEXNIC_PL_FLOWST_NUM];
 struct flow_id_item *flow_id_freelist;
@@ -129,8 +130,8 @@ unsigned nicif_poll(void)
     if (rte_ring_sc_dequeue(sp_rx_ring, (void **) &pkt_ptr.__rawptr) < 0)
       continue;
 
-    pkt = (struct rte_mbuf *) pkt_ptr.addr;
-    process_packet(rte_pktmbuf_mtod(pkt), rte_pktmbuf_pkt_len(pkt), 0, pkt_ptr.flow_grp);
+    pkt = BUF_FROM_PTR(pkt_ptr);
+    process_packet(rte_pktmbuf_mtod(pkt, const void *), rte_pktmbuf_pkt_len(pkt), 0, pkt_ptr.flow_grp);
 
     rte_pktmbuf_free_seg(pkt);    // NOTE: We do not handle chained mbufs here!
 
@@ -198,9 +199,7 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
   struct flextcp_pl_flowst_mem_t  *fs_mem;
   beui32_t lip = t_beui32(ip_local), rip = t_beui32(ip_remote);
   beui16_t lp = t_beui16(port_local), rp = t_beui16(port_remote);
-  uint32_t i, d, hash;
   int32_t f_id;
-  struct flextcp_pl_flowhte *hte = fp_state->flowht;
 
   struct {
     ip_addr_t lip;
@@ -222,7 +221,8 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
   }
 
   fs_conn = &fp_state->flows_conn_info[f_id];
-  fs_conn->flow_group = flow_group;
+  fs_conn->flow_id = f_id;
+  fs_conn->flow_grp = flow_group;
   memcpy(&fs_conn->remote_mac, &mac_remote, ETH_ADDR_LEN);
   fs_conn->flags = (((flags & NICIF_CONN_ECN) == NICIF_CONN_ECN) ? FLEXNIC_PL_FLOWST_ECN : 0);
   fs_conn->local_ip = lip;
@@ -275,8 +275,8 @@ int nicif_connection_disable(uint32_t f_id, uint32_t *tx_seq, uint32_t *rx_seq,
   *tx_seq = fs_tcp->tx_next_seq;
   *rx_seq = fs_tcp->rx_next_seq;
 
-  *rx_closed = !!(fs_tcp->rx_base_sp & FLEXNIC_PL_FLOWST_RXFIN);
-  *tx_closed = !!(fs_tcp->rx_base_sp & FLEXNIC_PL_FLOWST_TXFIN) &&
+  *rx_closed = !!(fs_tcp->flags & FLEXNIC_PL_FLOWST_RXFIN);
+  *tx_closed = !!(fs_tcp->flags & FLEXNIC_PL_FLOWST_TXFIN) &&
       fs_tcp->tx_sent == 0;
 
   struct {
@@ -355,9 +355,9 @@ int nicif_connection_retransmit(uint32_t f_id, uint16_t flow_group)
   struct workptr_t ptr;
   
   ptr.type = WORK_TYPE_RETX;
-  ptr.flags = 0;
   ptr.flow_grp = flow_group;
-  ptr.addr = f_id;
+  ptr.flow_id = f_id;
+  ptr.addr = 0;
 
   ret = rte_ring_mp_enqueue(protocol_workqueues[flow_group], (void *) ptr.__rawptr);
   if (ret < 0)
@@ -378,7 +378,7 @@ int nicif_tx_alloc(uint16_t len, void **pbuf, void **opaque)
   rte_pktmbuf_pkt_len(pkt) = len;
   rte_pktmbuf_data_len(pkt) = len;
 
-  *pbuf = rte_pktmbuf_mtod(pkt);
+  *pbuf = rte_pktmbuf_mtod(pkt, void *);
   *opaque = pkt;
 
   return 0;

@@ -3,6 +3,50 @@
 
 #include <stdint.h>
 #include <rte_config.h>
+#include <rte_ring.h>
+
+#include "utils.h"
+
+#define NUM_SEQ_CTXS          2
+#define NUM_FLOWGRPS          NUM_SEQ_CTXS
+STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
+
+
+#define BUF_FROM_PTR(WPTR)      ((void *) ((((intptr_t) (WPTR).__rawptr) << 22) >> 16))
+#define BUF_TO_PTR(BUF)       ((((uintptr_t) (BUF)) >> 6) & ((0x1ull << 42) - 1))
+STATIC_ASSERT(RTE_CACHE_LINE_SIZE == 64, cacheline_size);
+
+/**
+ * NBI - Network Block Interface.
+ * 
+ * Pipeline stage that interacts with the DPDK PMD (and consequently the NIC)
+ * to receive and transmit packets.
+ * 
+ * - Assigns sequence numbers to packets on ingress.
+ * - Reorders packets in the order of sequence numbers before egress.
+ */
+
+#define NBI_DIR_RX    0x0
+#define NBI_DIR_TX    0x1
+
+struct nbi_pkt_t {
+  union {
+    struct {
+      uint64_t mbuf:42;       /*> Packet address      */
+      uint64_t seqno:16;      /*> Sequence number     */
+      uint64_t seqr:3;        /*> Sequencer context   */
+      uint64_t rsvd:2;        /*> Reserved            */
+      uint64_t dir:1;         /*> NBI_DIR_            */
+    } __attribute__ ((packed));
+    void *__rawptr;
+  };
+};
+STATIC_ASSERT(sizeof(struct nbi_pkt_t) == sizeof(void *), nbipkt_size);
+
+extern struct rte_ring *nbi_rx_queue;
+extern struct rte_ring *nbi_tx_queue;
+
+/******************************************************************/
 
 enum {
   WORK_TYPE_RX   = 0,
@@ -17,28 +61,21 @@ enum {
 #define  WORK_FLAG_FIN                  (1 << 3)     /*> Marked connection as FIN          */
 #define  WORK_FLAG_QM_FORCE             (1 << 4)     /*> Force QM to schedule transmission */
 #define  WORK_FLAG_IP_ECE               (1 << 5)     /*> CE notified in IP header          */
-#define  WORk_FLAG_RESULT               (1 << 7)     /*> Processed work                    */
+#define  WORK_FLAG_RESULT               (1 << 7)     /*> Processed work                    */
 
 struct workptr_t {
   union {
     struct {
       uint64_t addr:42;           /*> Virtual address only uses 48 bits. Also, we use cache-aligned addresses further saving 6 bits. */
-      uint64_t flow_id:18;
-      uint64_t flow_grp:2;
+      uint64_t flow_id:17;
+      uint64_t flow_grp:3;
       uint64_t type:2;
     } __attribute__ ((packed));
     uintptr_t __rawptr;
   };
 };
-STATIC_ASSERT(sizeof(work_ptr_t) == sizeof(uintptr_t), workptr_size);
+STATIC_ASSERT(sizeof(struct workptr_t) == sizeof(uintptr_t), workptr_size);
 
-static inline void *get_work_address(struct workptr_t wptr)
-{
-  intptr_t p;
-
-  p = (((intptr_t) wptr.__rawptr) << 22) >> 22; /*> Sign extend the address to canonical form */
-  return ((void*) p);
-}
 struct work_t {
   union {
     struct {
@@ -69,7 +106,7 @@ struct work_t {
     uint32_t __raw[16];
   };
 };
-STATIC_ASSERT(sizeof(work_t) == RTE_CACHE_LINE_SIZE, work_size);
+STATIC_ASSERT(sizeof(struct work_t) == RTE_CACHE_LINE_SIZE, work_size);
 
 struct dma_cmd_t {
   union {
@@ -94,7 +131,7 @@ struct dma_cmd_t {
     uint32_t __raw[16];
   };
 } __attribute__((packed));
-STATIC_ASSERT(sizeof(dma_cmd_t) == RTE_CACHE_LINE_SIZE, dma_cmd_size);
+STATIC_ASSERT(sizeof(struct dma_cmd_t) == RTE_CACHE_LINE_SIZE, dma_cmd_size);
 
 #define SCHED_FLAG_TX_FORCE   (1 << 0)
 
@@ -110,7 +147,7 @@ struct sched_tx_t {
     void *__raw;
   };
 } __attribute__((packed));
-STATIC_ASSERT(sizeof(sched_tx_t) == sizeof(void *), sched_tx_size);
+STATIC_ASSERT(sizeof(struct sched_tx_t) == sizeof(void *), sched_tx_size);
 
 struct sched_bump_t {
   union {
@@ -122,6 +159,6 @@ struct sched_bump_t {
     void *__raw;
   };
 } __attribute__((packed));
-STATIC_ASSERT(sizeof(sched_bump_t) == sizeof(void *), sched_bump_size);
+STATIC_ASSERT(sizeof(struct sched_bump_t) == sizeof(void *), sched_bump_size);
 
 #endif /* TAS_PIPELINE_H_ */

@@ -233,7 +233,8 @@ struct flextcp_pl_appctx {
 struct flextcp_pl_flowst_conn_t {
   union {
     struct {
-      uint32_t flow_group;
+      uint32_t flow_id:24;
+      uint32_t flow_grp:8;
 
       struct eth_addr remote_mac;
       uint16_t flags;
@@ -303,8 +304,8 @@ struct flextcp_pl_flowst_tcp_t {
       uint32_t rtt_est;
       
       // /*> QM state */
-      // uint32_t qm_avail;
-      // uint32_t tx_rate;
+      uint32_t qm_avail;
+      uint32_t tx_rate;
     } __attribute__((packed));
 
     uint32_t rsvd[16];

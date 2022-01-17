@@ -3,13 +3,14 @@ include mk/subdir_pre.mk
 objs_top := tas.o config.o shm.o blocking.o
 objs_sp := kernel.o packetmem.o appif.o appif_ctx.o nicif.o cc.o tcp.o arp.o \
   routing.o kni.o
-objs_fp := fastemu.o network.o qman.o trace.o fast_kernel.o fast_appctx.o \
+# objs_fp := fastemu.o network.o qman.o trace.o fast_kernel.o fast_appctx.o \
   fast_flows.o
+objs_fp := nbi.o
 
 TAS_OBJS := $(addprefix $(d)/, \
   $(objs_top) \
   $(addprefix slow/, $(objs_sp)) \
-  $(addprefix fast/, $(objs_fp)))
+  $(addprefix pipeline/, $(objs_fp)))
 
 exec := $(d)/tas
 
