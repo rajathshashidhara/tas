@@ -173,6 +173,9 @@ static int common_thread(void *arg)
   else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES)) {
     preproc_thread(NULL);
   }
+  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_APPCTX_CORES)) {
+    appctx_thread(NULL);
+  }
 
   return EXIT_SUCCESS;
 }

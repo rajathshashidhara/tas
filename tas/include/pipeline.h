@@ -16,7 +16,8 @@ STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
 
 #define NUM_NBI_CORES               1
 #define NUM_PREPROC_CORES           1
-#define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES)
+#define NUM_APPCTX_CORES            1
+#define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_APPCTX_CORES)
 
 #define BUF_FROM_PTR(WPTR)      ((void *) ((((intptr_t) (WPTR).__rawptr) << 22) >> 16))
 #define BUF_TO_PTR(BUF)       ((((uintptr_t) (BUF)) >> 6) & ((0x1ull << 42) - 1))
@@ -173,6 +174,8 @@ extern struct rte_ring *atx_ring;
 extern struct rte_ring *arx_ring;
 extern struct rte_mempool *arx_desc_pool;        /*> Pool for RX APPCTX descriptors */
 extern struct rte_mempool *atx_desc_pool;        /*> Pool for TX APPCTX descriptors */
+
+int appctx_thread(void *args);
 
 /******************************************************************/
 
