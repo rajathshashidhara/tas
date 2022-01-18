@@ -160,7 +160,7 @@ static void flows_ac(struct flextcp_pl_flowst_tcp_t *fs,
   old_avail = tcp_txavail(fs, 0);
   new_avail = tcp_txavail(fs, work->tx_bump);
 
-  if ((work->flags & FLEXTCP_PL_ATX_FLTXDONE) == FLEXTCP_PL_ATX_FLTXDONE) {
+  if ((work->flags & WORK_FLAG_FIN) == WORK_FLAG_FIN) {
     fs->flags |= FLEXNIC_PL_FLOWST_TXFIN;
   }
 

@@ -18,6 +18,14 @@ struct preproc_thread_conf {
 
 };
 
+struct preproc_ctx {
+  struct workptr_t proc_work[NUM_FLOWGRPS][BATCH_SIZE];
+  unsigned num_proc[NUM_FLOWGRPS];
+
+  struct workptr_t sp_work[BATCH_SIZE];
+  unsigned num_sp;
+};
+
 #define VALID_MBUF_PTYPE   (RTE_PTYPE_L2_ETHER | RTE_PTYPE_L3_IPV4 | RTE_PTYPE_L4_TCP)
 #define VALID_MBUF_OFLAGS  (PKT_RX_IP_CKSUM_GOOD | PKT_RX_L4_CKSUM_GOOD)
 #define VALID_TCP_HDRSIZE  ((sizeof(struct pkt_tcp_ts) - offsetof(struct pkt_tcp_ts, tcp)) / 4)
@@ -44,10 +52,26 @@ static int validate_pkt_header(struct rte_mbuf *buf)
   return cond;
 }
 
-static void prepare_rx_work(struct rte_mbuf *pkt,
-            struct flextcp_pl_flowst_conn_t *conn,
-            uint16_t seqn)
+static void prepare_sp_work(struct preproc_ctx *ctx,
+            struct rte_mbuf *pkt,
+            struct nbi_pkt_t ndesc)
 {
+  unsigned idx;
+  idx = ctx->num_sp;
+
+  ctx->sp_work[idx].__rawptr = 0;
+  ctx->sp_work[idx].type = WORK_TYPE_RX;
+  ctx->sp_work[idx].flow_grp = ndesc.seqr;
+  ctx->sp_work[idx].addr = BUF_TO_PTR(pkt);
+  ctx->num_sp++;
+}
+
+static void prepare_rx_work(struct preproc_ctx *ctx,
+            struct rte_mbuf *pkt,
+            struct flextcp_pl_flowst_conn_t *conn,
+            struct nbi_pkt_t ndesc)
+{
+  unsigned fgp, idx;
   struct work_t *w = (struct work_t *) pkt->buf_addr; // Use the headroom to store metadata
   struct pkt_tcp_ts *p = rte_pktmbuf_mtod(pkt, struct pkt_tcp_ts *);
 
@@ -57,8 +81,8 @@ static void prepare_rx_work(struct rte_mbuf *pkt,
   w->flags = 0;
   w->len = rte_pktmbuf_data_len(pkt) - sizeof(struct pkt_tcp_ts); // Should be positive after validate
   w->flow_id = conn->flow_id;
-  w->flow_grp = conn->flow_grp;
-  w->reorder_seqn = seqn;
+  w->flow_grp = ndesc.seqr;
+  w->reorder_seqn = ndesc.seqno;
   w->mbuf = pkt;
 
   w->seq = f_beui32(p->tcp.seqno) - conn->ack_delta;
@@ -71,6 +95,16 @@ static void prepare_rx_work(struct rte_mbuf *pkt,
   if (IPH_ECN(&p->ip) == IP_ECN_CE) {
     w->flags |= WORK_FLAG_IP_ECE;
   }
+
+  fgp = ndesc.seqr;
+  idx = ctx->num_proc[fgp];
+  ctx->proc_work[fgp][idx].__rawptr = 0;
+  ctx->proc_work[fgp][idx].type = WORK_TYPE_RX;
+  ctx->proc_work[fgp][idx].flow_id = w->flow_id;
+  ctx->proc_work[fgp][idx].flow_grp = ndesc.seqr;
+  ctx->proc_work[fgp][idx].addr = BUF_TO_PTR(pkt);
+
+  ctx->num_proc[fgp]++;
 }
 
 static void prepare_ack_header(struct pkt_tcp_ts *p)
@@ -97,20 +131,18 @@ static void prepare_ack_header(struct pkt_tcp_ts *p)
   p->ip.ttl = 0xff;
 }
 
-static unsigned preprocess_rx(uint16_t rxq)
+static unsigned preprocess_rx(struct preproc_ctx *ctx, unsigned max_num)
 {
-  unsigned i, ret;
-  unsigned num_rx, num_sp, num_proc;
+  unsigned i;
+  unsigned num_rx;
   struct nbi_pkt_t nbi_pkts[BATCH_SIZE];    /*> Packets desc. from RX queue */
   struct rte_mbuf *pkts[BATCH_SIZE];        /*> Packet buffers */
-  struct workptr_t sp_pkts[BATCH_SIZE];     /*> Packets filtered out to slowpath */
-  struct workptr_t proc_pkts[BATCH_SIZE];   /*> Packets for protocol stage */
   struct flextcp_pl_flowst_conn_t *conn;
 
   const void *keys_4tuple[BATCH_SIZE];
   int32_t flow_ids[BATCH_SIZE];
 
-  num_rx = rte_ring_mc_dequeue_burst(nbi_rx_queues[rxq], (void **) nbi_pkts, BATCH_SIZE, NULL);
+  num_rx = rte_ring_mc_dequeue_burst(nbi_rx_queue, (void **) nbi_pkts, max_num, NULL);
   if (num_rx == 0)
     return 0;
 
@@ -128,7 +160,6 @@ static unsigned preprocess_rx(uint16_t rxq)
 
   rte_hash_lookup_bulk(flow_lookup_table, keys_4tuple, num_rx, flow_ids);
 
-  num_sp = 0;
   for (i = 0; i < num_rx; i++) {
     /* Filter failed lookups to slowpath */
     if (flow_ids[i] == -ENOENT)
@@ -144,57 +175,31 @@ static unsigned preprocess_rx(uint16_t rxq)
     continue;
 
 slowpath:
-    sp_pkts[num_sp].__rawptr = 0;
-    sp_pkts[num_sp].type = WORK_TYPE_RX;
-    sp_pkts[num_sp].flow_grp = nbi_pkts[i].seqr;
-    sp_pkts[num_sp].addr = BUF_TO_PTR(pkts[i]);
-    num_sp++;
-
+    prepare_sp_work(ctx, pkts[i], nbi_pkts[i]);
     pkts[i] = NULL;
   }
 
-  num_proc = 0;
   for (i = 0; i < num_rx; i++) {
     if (pkts[i] == NULL)
       continue;
 
     conn = &fp_state->flows_conn_info[flow_ids[i]];
 
-    proc_pkts[num_proc].__rawptr = 0;
-    proc_pkts[num_proc].type = WORK_TYPE_RX;
-    proc_pkts[num_proc].flow_id = flow_ids[i];
-    proc_pkts[num_proc].flow_grp = nbi_pkts[i].seqr;
-    proc_pkts[num_proc].addr = BUF_TO_PTR(pkts[i]);
-
     /* Generate packet summary for protocol state */
-    prepare_rx_work(pkts[i], conn, nbi_pkts[i].seqno);
+    prepare_rx_work(ctx, pkts[i], conn, nbi_pkts[i]);
 
     /* Swap TCP headers in anticipation of sending an ACK */
     prepare_ack_header(rte_pktmbuf_mtod(pkts[i], struct pkt_tcp_ts *));
-
-    num_proc++;
-  }
-
-  if (num_sp > 0) {
-    ret = rte_ring_mp_enqueue_burst(sp_rx_ring, (void **) sp_pkts, num_sp, NULL);
-
-    for (i = ret; i < num_sp; i++)
-      rte_pktmbuf_free_seg(BUF_FROM_PTR(sp_pkts[i]));     // NOTE: We do not handle chained mbufs here!
-  }
-
-  if (num_proc > 0) {
-    ret = rte_ring_mp_enqueue_burst(protocol_workqueues[rxq], (void **) proc_pkts, num_proc, NULL);
-
-    for (i = ret; i < num_proc; i++)
-      rte_pktmbuf_free_seg(BUF_FROM_PTR(proc_pkts[i]));   // NOTE: We do not handle chained mbufs here!
   }
 
   return num_rx;
 }
 
-static void prepare_tx_work(struct rte_mbuf   *pkt,
+static void prepare_tx_work(struct preproc_ctx *ctx,
+                            struct rte_mbuf   *pkt,
                             struct sched_tx_t tx)
 {
+  unsigned fgp, idx;
   struct work_t *w = (struct work_t *) pkt->buf_addr; // Use the headroom to store metadata
 
   rte_pktmbuf_data_len(pkt) = rte_pktmbuf_pkt_len(pkt) = sizeof(struct pkt_tcp_ts);
@@ -207,6 +212,16 @@ static void prepare_tx_work(struct rte_mbuf   *pkt,
   w->flow_grp = tx.flow_grp;
   w->reorder_seqn = 0;
   w->mbuf = pkt;
+
+  fgp = tx.flow_grp;
+  idx = ctx->num_proc[fgp];
+  ctx->proc_work[fgp][idx].__rawptr = 0;
+  ctx->proc_work[fgp][idx].type = WORK_TYPE_TX;
+  ctx->proc_work[fgp][idx].flow_id = tx.flow_id;
+  ctx->proc_work[fgp][idx].flow_grp = tx.flow_grp;
+  ctx->proc_work[fgp][idx].addr = BUF_TO_PTR(pkt);
+
+  ctx->num_proc[fgp]++;
 }
 
 static void prepare_seg_header(struct pkt_tcp_ts *p,
@@ -240,16 +255,15 @@ static void prepare_seg_header(struct pkt_tcp_ts *p,
   p->pad = 0;
 }
 
-static unsigned preprocess_tx(uint16_t txq)
+static unsigned preprocess_tx(struct preproc_ctx *ctx, unsigned max_num)
 {
-  unsigned i, num_tx, num_enq;
+  unsigned i, num_tx;
   
   struct sched_tx_t tx[BATCH_SIZE];
   struct rte_mbuf *pkts[BATCH_SIZE];
   struct flextcp_pl_flowst_conn_t *conns[BATCH_SIZE];
-  struct workptr_t proc_pkts[BATCH_SIZE];
 
-  num_tx = rte_ring_mc_dequeue_burst(sched_tx_queues[txq], (void **) tx, BATCH_SIZE, NULL);
+  num_tx = rte_ring_mc_dequeue_burst(sched_tx_queue, (void **) tx, max_num, NULL);
   if (num_tx == 0)
     return 0;
 
@@ -272,25 +286,67 @@ static unsigned preprocess_tx(uint16_t txq)
   
   for (i = 0; i < num_tx; i++) {
     /* Prepare work descriptor */
-    prepare_tx_work(pkts[i], tx[i]);
+    prepare_tx_work(ctx, pkts[i], tx[i]);
 
     /* Prepare segment header */
     prepare_seg_header(rte_pktmbuf_mtod(pkts[i], struct pkt_tcp_ts *), conns[i]);
-
-    proc_pkts[i].__rawptr = 0;
-    proc_pkts[i].type = WORK_TYPE_TX;
-    proc_pkts[i].flow_id = tx[i].flow_id;
-    proc_pkts[i].flow_grp = tx[i].flow_grp;
-    proc_pkts[i].addr = BUF_TO_PTR(pkts[i]);
-  }
-
-  num_enq = rte_ring_mp_enqueue_burst(protocol_workqueues[txq], (void **) proc_pkts, num_tx, NULL);
-
-  for (i = num_enq; i < num_tx; i++) {
-    rte_pktmbuf_free_seg(pkts[i]);   // NOTE: We do not handle chained mbufs here! 
   }
 
   return num_tx;
+}
+
+static void prepare_ac_work(struct preproc_ctx *ctx, struct actxptr_t dptr)
+{
+  unsigned fgp, idx;
+  struct work_t w;
+  struct appctx_desc_t *desc = (struct appctx_desc_t *) BUF_FROM_PTR(dptr);
+
+  memset(&w, 0, sizeof(struct work_t));
+
+  w.type = WORK_TYPE_AC;
+  w.flags = ((desc->atx.msg.connupdate.flags & FLEXTCP_PL_ATX_FLTXDONE) == 0 ? 0 : WORK_FLAG_FIN);
+  w.flow_id = desc->atx.msg.connupdate.flow_id;
+  w.flow_grp = desc->atx.msg.connupdate.flow_grp;
+  w.rx_bump = desc->atx.msg.connupdate.rx_bump;
+  w.tx_bump = desc->atx.msg.connupdate.tx_bump;
+  w.reorder_seqn = dptr.seqno;
+  w.mbuf = desc;
+
+  rte_memcpy(desc, &w, sizeof(struct work_t));
+
+  fgp = w.flow_id;
+  idx = ctx->num_proc[fgp];
+  
+  ctx->proc_work[fgp][idx].__rawptr = 0;
+  ctx->proc_work[fgp][idx].type = WORK_TYPE_AC;
+  ctx->proc_work[fgp][idx].flow_id  = w.flow_id;
+  ctx->proc_work[fgp][idx].flow_grp = w.flow_grp;
+  ctx->proc_work[fgp][idx].addr = BUF_TO_PTR(desc);
+  ctx->num_proc[fgp]++;
+}
+
+static unsigned preprocess_ac(struct preproc_ctx *ctx, unsigned max_num)
+{
+  unsigned i, num_ac;
+  
+  struct actxptr_t ac[BATCH_SIZE];
+  struct appctx_desc_t *descs[BATCH_SIZE];
+
+  num_ac = rte_ring_mc_dequeue_burst(atx_ring, (void **) ac, max_num, NULL);
+  if (num_ac == 0)
+    return 0;
+
+  for (i = 0; i < num_ac; i++) {
+    descs[i] = (struct appctx_desc_t *) BUF_FROM_PTR(ac[i]);
+    rte_prefetch0(descs[i]);
+  }
+
+  for (i = 0; i < num_ac; i++) {
+    /* Prepare work */
+    prepare_ac_work(ctx, ac[i]);
+  }
+
+  return num_ac;
 }
 
 void preproc_thread_init(struct preproc_thread_conf *conf) {
@@ -300,19 +356,46 @@ void preproc_thread_init(struct preproc_thread_conf *conf) {
 }
 
 int preproc_thread(void *args) {
-  uint16_t q;
+  unsigned q, n;
   struct preproc_thread_conf *conf = (struct preproc_thread_conf *) args;
+  struct preproc_ctx ctx;
 
   preproc_thread_init(conf);
 
-  q = 0;
   while (1) {
-    preprocess_rx(q);
-    preprocess_tx(q);
+    /* Reset CTX */
+    ctx.num_sp = 0;
+    for (q = 0; q < NUM_FLOWGRPS; q++) {
+      ctx.num_proc[q] = 0;
+    }
 
-    q++;
-    if (q == NUM_FLOWGRPS)
-      q = 0;
+    n = 0;
+    n += preprocess_rx(&ctx, BATCH_SIZE);
+    n += preprocess_tx(&ctx, BATCH_SIZE - n);
+    n += preprocess_ac(&ctx, BATCH_SIZE - n);
+
+    if (n == 0)
+      continue;
+
+    /* Push descriptors out to protocol workqueues */
+    for (q = 0; q < NUM_FLOWGRPS; q++) {
+      if (ctx.num_proc[q] == 0)
+        continue;
+
+      n = rte_ring_mp_enqueue_burst(protocol_workqueues[q], (void **) ctx.proc_work[q], ctx.num_proc[q], NULL);
+      if (n < ctx.num_proc[q]) {
+        // TODO: ?
+        fprintf(stderr, "%s:%d\n", __func__, __LINE__); 
+      }
+    }
+
+    if (ctx.num_sp > 0) {
+      n = rte_ring_mp_enqueue_burst(sp_rx_ring, (void **) ctx.sp_work, ctx.num_sp, NULL);
+      if (n < ctx.num_sp) {
+        // TODO: ?
+        fprintf(stderr, "%s:%d\n", __func__, __LINE__); 
+      }
+    }
   }
 
   return EXIT_SUCCESS;

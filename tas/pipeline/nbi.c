@@ -39,7 +39,7 @@ static unsigned poll_rx(uint16_t rxq)
     nbi_pkts[i].mbuf = BUF_TO_PTR(rx_pkts[i]);
   }
 
-  m = rte_ring_sp_enqueue_burst(nbi_rx_queues[rxq], (void **) nbi_pkts, n, NULL);
+  m = rte_ring_sp_enqueue_burst(nbi_rx_queue, (void **) nbi_pkts, n, NULL);
 
   /* Free packets on enqueue failure */
   for (i = m; i < n; i++) {
@@ -130,21 +130,18 @@ static void nbi_thread_init(struct nbi_thread_conf *conf)
 
 int nbi_thread(void *args)
 {
-  uint16_t rxq, txq;
+  uint16_t q;
   struct nbi_thread_conf *conf = (struct nbi_thread_conf *) args;
 
   nbi_thread_init(conf);
 
-  rxq = 0;
-  txq = 0;
-
   while (1) {
-    poll_rx(rxq);
-    rxq = (rxq + 1) % NUM_SEQ_CTXS;
 
-    poll_tx(txq);
-    poll_sequencers(txq);
-    txq = (txq + 1) % NUM_SEQ_CTXS;
+    for (q = 0; q < NUM_SEQ_CTXS; q++) {
+      poll_rx(q);
+      poll_tx(q);
+      poll_sequencers(q);
+    }    
   }
 
   return EXIT_SUCCESS;

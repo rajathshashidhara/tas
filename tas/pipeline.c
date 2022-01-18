@@ -22,17 +22,17 @@
 #include <pipeline.h>
 #include <tas.h>
 
-#define RING_SIZE   4096
+#define RING_SIZE   2048
 #define ARX_DESCRIPTORS  2048
 #define ATX_DESCRIPTORS  2048
 #define DESC_SIZE   (RTE_CACHE_LINE_SIZE)
 
-struct rte_ring *nbi_rx_queues[NUM_SEQ_CTXS];
+struct rte_ring *nbi_rx_queue;
 struct rte_ring *nbi_tx_queues[NUM_SEQ_CTXS];
 struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
 struct rte_hash *flow_lookup_table;
 struct rte_ring *sp_rx_ring;
-struct rte_ring *sched_tx_queues[NUM_FLOWGRPS];
+struct rte_ring *sched_tx_queue;
 struct rte_ring *atx_ring;
 struct rte_ring *arx_ring;
 struct rte_mempool *arx_desc_pool;
@@ -57,16 +57,14 @@ int pipeline_init()
   char name[64];
   unsigned i;
 
-  /* Init NBI RX queues */
-  for (i = 0; i < NUM_SEQ_CTXS; i++) {
-    snprintf(name, 64, "nbi_rx_%u", i);
-    nbi_rx_queues[i] = rte_ring_create(name, RING_SIZE, rte_socket_id(),
-            RING_F_SP_ENQ);
+  /* Init NBI RX queue */
+  snprintf(name, 64, "nbi_rx_");
+  nbi_rx_queue = rte_ring_create(name, NUM_SEQ_CTXS * RING_SIZE, rte_socket_id(),
+          RING_F_SP_ENQ);
 
-    if (nbi_rx_queues[i] == NULL) {
-      fprintf(stderr, "%s: %d\n", __func__, __LINE__);
-      return -1;
-    }
+  if (nbi_rx_queue == NULL) {
+    fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+    return -1;
   }
 
   /* Init NBI TX queues */
@@ -115,16 +113,14 @@ int pipeline_init()
     }
   }
 
-  /* Init scheduler queues */
-  for (i = 0; i < NUM_FLOWGRPS; i++) {
-    snprintf(name, 64, "sched_wq_%u", i);
-    sched_tx_queues[i] = rte_ring_create(name, RING_SIZE, rte_socket_id(),
-            RING_F_SP_ENQ);
-    
-    if (sched_tx_queues[i] == NULL) {
-      fprintf(stderr, "%s: %d\n", __func__, __LINE__);
-      return -1;
-    }
+  /* Init scheduler queue */
+  snprintf(name, 64, "sched_wq_");
+  sched_tx_queue = rte_ring_create(name, NUM_SEQ_CTXS * RING_SIZE, rte_socket_id(),
+          RING_F_SP_ENQ);
+  
+  if (sched_tx_queue == NULL) {
+    fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+    return -1;
   }
 
   /* Init ARX desc pool */

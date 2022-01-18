@@ -51,7 +51,7 @@ struct nbi_pkt_t {
 STATIC_ASSERT(sizeof(struct nbi_pkt_t) == sizeof(void *), nbipkt_size);
 
 extern uint8_t net_port_id;
-extern struct rte_ring *nbi_rx_queues[NUM_SEQ_CTXS];
+extern struct rte_ring *nbi_rx_queue;
 extern struct rte_ring *nbi_tx_queues[NUM_SEQ_CTXS];
 
 int nbi_thread(void *args);
@@ -104,6 +104,8 @@ struct work_t {
       uint32_t rx_bump;
       uint32_t tx_bump;
       uint32_t reorder_seqn;
+      void *mbuf;
+      uint32_t qm_bump;
 
       uint32_t seq;
       uint32_t ack;
@@ -115,9 +117,6 @@ struct work_t {
       uint32_t dma_pos;
       uint16_t dma_len;
       uint16_t dma_off;
-
-      uint32_t qm_bump;
-      struct rte_mbuf *mbuf;
     } __attribute__ ((packed));
     
     uint32_t __raw[16];
@@ -214,7 +213,7 @@ struct sched_bump_t {
 STATIC_ASSERT(sizeof(struct sched_bump_t) == sizeof(void *), sched_bump_size);
 
 extern struct rte_ring *sched_bump_queue;
-extern struct rte_ring *sched_tx_queues[NUM_FLOWGRPS];
+extern struct rte_ring *sched_tx_queue;
 
 /******************************************************************/
 
