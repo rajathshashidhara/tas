@@ -53,8 +53,11 @@ int shm_init(unsigned num);
 void shm_cleanup(void);
 void shm_set_ready(void);
 
-int network_init(unsigned num_threads);
+int network_init();
 void network_cleanup(void);
+
+int pipeline_init();
+void pipeline_cleanup(void);
 
 /* used by trace and shm */
 void *util_create_shmsiszed(const char *name, size_t size, void *addr);

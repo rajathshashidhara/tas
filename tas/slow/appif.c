@@ -353,7 +353,8 @@ static void uxsocket_accept(void)
 
     pfd = (int *) CMSG_DATA(cmsg);
     for (j = 0; j < n; j++) {
-      pfd[j] = ctxs[off++]->evfd;
+      // pfd[j] = ctxs[off++]->evfd;
+      pfd[j] = 0; // FIXME
     }
 
     /* send out kernel notify fd */

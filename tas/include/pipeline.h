@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <rte_config.h>
 #include <rte_ring.h>
+#include <rte_mempool.h>
 
 #include "utils.h"
 #include "tas_memif.h"
@@ -13,6 +14,8 @@
 #define SP_SEQ_CTX            NUM_SEQ_CTXS        /*> Slowpath uses its own TXQ */
 STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
 
+#define NUM_NBI_CORES               1
+#define NUM_PIPELINE_CORES          (NUM_NBI_CORES)
 
 #define BUF_FROM_PTR(WPTR)      ((void *) ((((intptr_t) (WPTR).__rawptr) << 22) >> 16))
 #define BUF_TO_PTR(BUF)       ((((uintptr_t) (BUF)) >> 6) & ((0x1ull << 42) - 1))
@@ -45,8 +48,11 @@ struct nbi_pkt_t {
 };
 STATIC_ASSERT(sizeof(struct nbi_pkt_t) == sizeof(void *), nbipkt_size);
 
+extern uint8_t net_port_id;
 extern struct rte_ring *nbi_rx_queues[NUM_SEQ_CTXS];
 extern struct rte_ring *nbi_tx_queues[NUM_SEQ_CTXS];
+
+int nbi_thread(void *args);
 
 /******************************************************************/
 
@@ -121,6 +127,7 @@ extern struct rte_ring *sp_rx_ring;
 extern struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
 extern struct rte_mempool *sp_pkt_mempool;
 extern struct rte_mempool *tx_pkt_mempool;
+extern struct rte_mempool *rx_pkt_mempools[NUM_SEQ_CTXS];
 extern struct rte_hash *flow_lookup_table;
 
 

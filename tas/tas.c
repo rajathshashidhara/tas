@@ -41,8 +41,7 @@
 #include <utils_timeout.h>
 
 #include <tas.h>
-#include <fastpath.h>
-#include "fast/internal.h"
+#include <pipeline.h>
 
 struct core_load {
   uint64_t cyc_busy;
@@ -51,17 +50,11 @@ struct core_load {
 struct configuration config;
 
 unsigned fp_cores_max;
-volatile unsigned fp_cores_cur = 1;
-volatile unsigned fp_scale_to = 0;
 
 static unsigned threads_launched = 0;
 int exited;
 
-struct dataplane_context **ctxs = NULL;
-struct core_load *core_loads = NULL;
-
 static int start_threads(void);
-static void thread_error(void);
 static int common_thread(void *arg);
 
 
@@ -80,7 +73,7 @@ int main(int argc, char *argv[])
     res = EXIT_FAILURE;
     goto error_exit;
   }
-  fp_cores_max = config.fp_cores_max;
+  fp_cores_max = NUM_PIPELINE_CORES;
 
   /* allocate shared memory before dpdk grabs all huge pages */
   if (shm_preinit() != 0) {
@@ -95,29 +88,39 @@ int main(int argc, char *argv[])
     goto error_exit;
   }
 
+#if 0
   if ((core_loads = calloc(fp_cores_max, sizeof(*core_loads))) == NULL) {
     res = EXIT_FAILURE;
     fprintf(stderr, "core loads alloc failed\n");
     goto error_exit;
   }
+#endif
 
-  if (shm_init(fp_cores_max) != 0) {
+  if (shm_init(1) != 0) {
     res = EXIT_FAILURE;
     fprintf(stderr, "dma init failed\n");
     goto error_exit;
   }
 
-  if (network_init(fp_cores_max) != 0) {
+  if (network_init() != 0) {
     res = EXIT_FAILURE;
     fprintf(stderr, "network init failed\n");
     goto error_shm_cleanup;
   }
 
+  if (pipeline_init() != 0) {
+    res = EXIT_FAILURE;
+    fprintf(stderr, "pipeline_init failed\n");
+    goto error_network_cleanup;
+  }
+
+#if 0
   if (dataplane_init() != 0) {
     res = EXIT_FAILURE;
     fprintf(stderr, "dpinit failed\n");
     goto error_network_cleanup;
   }
+#endif
 
   shm_set_ready();
 
@@ -142,7 +145,6 @@ error_exit:
 static int common_thread(void *arg)
 {
   uint16_t id = (uintptr_t) arg;
-  struct dataplane_context *ctx;
 
   {
     char name[17];
@@ -150,43 +152,11 @@ static int common_thread(void *arg)
     pthread_setname_np(pthread_self(), name);
   }
 
-  /* Allocate fastpath core context */
-  if ((ctx = rte_zmalloc("fastpath core context", sizeof(*ctx), 0)) == NULL) {
-    fprintf(stderr, "Allocating fastpath core context failed\n");
-    goto error_alloc;
-  }
-  ctxs[id] = ctx;
-  ctx->id = id;
-
-
-  /* initialize trace if enabled */
-#ifdef FLEXNIC_TRACING
-  if (trace_thread_init(id) != 0) {
-    fprintf(stderr, "initializing trace failed\n");
-    goto error_trace;
-  }
-#endif
-
-  /* initialize data plane context */
-  if (dataplane_context_init(ctx) != 0) {
-    fprintf(stderr, "initializing data plane context\n");
-    goto error_dpctx;
+  if (id == 0) {
+    nbi_thread(NULL);
   }
 
-  /* poll doorbells and network */
-  dataplane_loop(ctx);
-
-  dataplane_context_destroy(ctx);
-  return 0;
-
-error_dpctx:
-#ifdef FLEXNIC_TRACING
-error_trace:
-#endif
-  dataplane_context_destroy(ctx);
-error_alloc:
-  thread_error();
-  return -1;
+  return EXIT_SUCCESS;
 }
 
 static int start_threads(void)
@@ -197,11 +167,6 @@ static int start_threads(void)
   cores_avail = rte_lcore_count();
   /* fast path cores + one slow path core */
   cores_needed = fp_cores_max + 1;
-
-  if ((ctxs = rte_calloc("context list", fp_cores_max, sizeof(*ctxs), 64)) == NULL) {
-    perror("datplane_init: calloc failed");
-    return -1;
-  }
 
   /* check that we have enough cores */
   if (cores_avail < cores_needed) {
@@ -215,7 +180,7 @@ static int start_threads(void)
     if (threads_launched < fp_cores_max) {
       arg = (void *) (uintptr_t) threads_launched;
       if (rte_eal_remote_launch(common_thread, arg, core) != 0) {
-	fprintf(stderr, "ERROR\n");
+	      fprintf(stderr, "ERROR\n");
         return -1;
       }
       threads_launched++;
@@ -225,27 +190,9 @@ static int start_threads(void)
   return 0;
 }
 
-static void thread_error(void)
-{
-  fprintf(stderr, "thread_error\n");
-  abort();
-}
-
-int flexnic_scale_to(uint32_t cores)
-{
-  if (fp_scale_to != 0) {
-    fprintf(stderr, "flexnic_scale_to: already scaling\n");
-    return -1;
-  }
-
-  fp_scale_to = cores;
-
-  notify_fastpath_core(0);
-  return 0;
-}
-
 void flexnic_loadmon(uint32_t ts)
 {
+#if 0
   uint64_t cyc_busy = 0, x, tsc, cycles, id_cyc;
   unsigned i, num_cores;
   static uint64_t ewma_busy = 0, ewma_cycles = 0, last_tsc = 0, kdrops = 0;
@@ -320,4 +267,5 @@ void flexnic_loadmon(uint32_t ts)
     waiting_n = 0;
     return;
   }
+#endif
 }

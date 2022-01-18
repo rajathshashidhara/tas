@@ -492,9 +492,9 @@ extern int flexnic_scale_to(uint32_t cores);
 static int kin_req_scale(struct application *app, struct app_context *ctx,
     volatile struct kernel_appout *kin, volatile struct kernel_appin *kout)
 {
-  uint32_t num_cores = kin->data.req_scale.num_cores;
-
-  flexnic_scale_to(num_cores);
+  // FIXME
+  // uint32_t num_cores = kin->data.req_scale.num_cores;
+  // flexnic_scale_to(num_cores);
 
   return 0;
 }

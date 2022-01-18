@@ -587,7 +587,7 @@ static int config_defaults(struct configuration *c, char *progname)
   c->fp_cores_max = 1;
   c->fp_interrupts = 1;
   c->fp_xsumoffload = 1;
-  c->fp_autoscale = 1;
+  c->fp_autoscale = 0;
   c->fp_hugepages = 1;
   c->fp_vlan_strip = 0;
   c->fp_poll_interval_tas = 10000;

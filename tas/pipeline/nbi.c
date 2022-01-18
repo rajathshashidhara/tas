@@ -11,34 +11,23 @@
 #include "utils_reorder.h"
 #include "pipeline.h"
 
-#define BATCH_SIZE  32
+#define REORDER_BUFFER_SIZE   2048
+#define BATCH_SIZE 32
 
 struct utils_reorder_buffer *tx_sequencers[NUM_FLOWGRPS];
 static uint16_t rx_seqn[NUM_FLOWGRPS];
 
 struct nbi_thread_conf {
-  uint16_t port_id;
-  
-  /* Handles RX from [rx_queueid_start, rx_queueid_start + nb_rx) */
-  uint16_t nb_rx;
-  uint16_t rx_queueid_start;
-
-  /* Handles TX to   [tx_queueid_start, tx_queueid_start + nb_tx) */
-  /* Typically, each flow group has its own TX queue */
-  uint16_t nb_tx;
-  uint16_t tx_queueid_start;
-
-  unsigned reorder_buffer_size;
 };
 
-static unsigned poll_rx(uint16_t port_id, uint16_t rxq)
+static unsigned poll_rx(uint16_t rxq)
 {
   unsigned n, m, i;
   struct rte_mbuf *rx_pkts[BATCH_SIZE];
   struct nbi_pkt_t nbi_pkts[BATCH_SIZE];
 
   /* Poll for RX packets */
-  n = rte_eth_rx_burst(port_id, rxq, rx_pkts, BATCH_SIZE);
+  n = rte_eth_rx_burst(net_port_id, rxq, rx_pkts, BATCH_SIZE);
 
   if (n == 0)
     return 0;
@@ -98,7 +87,7 @@ static unsigned poll_tx(uint16_t txq)
   return n;
 }
 
-static unsigned poll_sequencers(uint16_t port_id, uint16_t txq)
+static unsigned poll_sequencers(uint16_t txq)
 {
   unsigned n, m, i;
   struct rte_mbuf *tx_pkts[BATCH_SIZE];
@@ -109,7 +98,7 @@ static unsigned poll_sequencers(uint16_t port_id, uint16_t txq)
   if (n == 0)
     return 0;
 
-  m = rte_eth_tx_burst(port_id, txq, tx_pkts, n);
+  m = rte_eth_tx_burst(net_port_id, txq, tx_pkts, n);
 
   /* Free untransmitted packets */
   for (i = m; i < n; i++) {
@@ -123,13 +112,14 @@ static unsigned poll_sequencers(uint16_t port_id, uint16_t txq)
 static void nbi_thread_init(struct nbi_thread_conf *conf)
 {
   uint16_t q;
+  (void) conf;
 
-  for (q = conf->rx_queueid_start; q < conf->rx_queueid_start + conf->nb_rx; q++) {
+  for (q = 0; q < NUM_SEQ_CTXS; q++) {
     rx_seqn[q] = 0;
   }
 
-  for (q = conf->tx_queueid_start; q < conf->tx_queueid_start + conf->nb_tx; q++) {
-    tx_sequencers[q] = utils_reorder_init(rte_socket_id(), conf->reorder_buffer_size);
+  for (q = 0; q < NUM_SEQ_CTXS; q++) {
+    tx_sequencers[q] = utils_reorder_init(rte_socket_id(), REORDER_BUFFER_SIZE);
 
     if (tx_sequencers[q] == NULL) {
       fprintf(stderr, "%s:%d\n", __func__, __LINE__);
@@ -140,28 +130,21 @@ static void nbi_thread_init(struct nbi_thread_conf *conf)
 
 int nbi_thread(void *args)
 {
-  uint16_t port_id, rxq, txq;
-  uint16_t rxq_start, rxq_end, txq_start, txq_end;
-
+  uint16_t rxq, txq;
   struct nbi_thread_conf *conf = (struct nbi_thread_conf *) args;
 
   nbi_thread_init(conf);
 
-  port_id = conf->port_id;
-  rxq_start = rxq = conf->rx_queueid_start;
-  rxq_end = rxq_start + conf->nb_rx;
-  txq_start = txq = conf->tx_queueid_start;
-  txq_end = txq_start + conf->nb_tx;
+  rxq = 0;
+  txq = 0;
 
   while (1) {
-    poll_rx(port_id, rxq);
-    if (++rxq == rxq_end)
-      rxq = rxq_start;
+    poll_rx(rxq);
+    rxq = (rxq + 1) % NUM_SEQ_CTXS;
 
     poll_tx(txq);
-    poll_sequencers(port_id, txq);
-    if (++txq == txq_end)
-      txq = txq_start;
+    poll_sequencers(txq);
+    txq = (txq + 1) % NUM_SEQ_CTXS;
   }
 
   return EXIT_SUCCESS;
