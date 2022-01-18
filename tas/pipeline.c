@@ -23,12 +23,20 @@
 #include <tas.h>
 
 #define RING_SIZE   4096
+#define ARX_DESCRIPTORS  2048
+#define ATX_DESCRIPTORS  2048
+#define DESC_SIZE   (RTE_CACHE_LINE_SIZE)
 
 struct rte_ring *nbi_rx_queues[NUM_SEQ_CTXS];
 struct rte_ring *nbi_tx_queues[NUM_SEQ_CTXS];
 struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
 struct rte_hash *flow_lookup_table;
 struct rte_ring *sp_rx_ring;
+struct rte_ring *sched_tx_queues[NUM_FLOWGRPS];
+struct rte_ring *atx_ring;
+struct rte_ring *arx_ring;
+struct rte_mempool *arx_desc_pool;
+struct rte_mempool *atx_desc_pool;
 
 static inline uint32_t
 flow_hash_crc(const void *data, __rte_unused uint32_t data_len,
@@ -93,6 +101,68 @@ int pipeline_init()
   if (flow_lookup_table == NULL) {
     fprintf(stderr, "%s: %d\n", __func__, __LINE__);
     return -1; 
+  }
+
+  /* Init Protocol workqueues */
+  for (i = 0; i < NUM_FLOWGRPS; i++) {
+    snprintf(name, 64, "protocol_wq_%u", i);
+    protocol_workqueues[i] = rte_ring_create(name, RING_SIZE, rte_socket_id(),
+            RING_F_SC_DEQ);
+    
+    if (protocol_workqueues[i] == NULL) {
+      fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+      return -1;
+    }
+  }
+
+  /* Init scheduler queues */
+  for (i = 0; i < NUM_FLOWGRPS; i++) {
+    snprintf(name, 64, "sched_wq_%u", i);
+    sched_tx_queues[i] = rte_ring_create(name, RING_SIZE, rte_socket_id(),
+            RING_F_SP_ENQ);
+    
+    if (sched_tx_queues[i] == NULL) {
+      fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+      return -1;
+    }
+  }
+
+  /* Init ARX desc pool */
+  snprintf(name, 32, "arx_desc_pool");
+  arx_desc_pool = rte_mempool_create(name, ARX_DESCRIPTORS, DESC_SIZE, 64,
+          0, NULL, NULL, NULL, NULL, rte_socket_id(), MEMPOOL_F_SP_PUT);
+  if (arx_desc_pool == NULL) {
+    fprintf(stderr, "network_thread_init: rte_mempool_create failed\n");
+    return -1; 
+  }
+
+  /* Init ATX desc pool */
+  snprintf(name, 32, "atx_desc_pool");
+  atx_desc_pool = rte_mempool_create(name, ATX_DESCRIPTORS, DESC_SIZE, 64,
+          0, NULL, NULL, NULL, NULL, rte_socket_id(), MEMPOOL_F_SC_GET);
+  if (atx_desc_pool == NULL) {
+    fprintf(stderr, "network_thread_init: rte_mempool_create failed\n");
+    return -1; 
+  }
+
+  /* Init ARX queue */
+  snprintf(name, 64, "appctx_rx_");
+  arx_ring = rte_ring_create(name, RING_SIZE, rte_socket_id(),
+          RING_F_SC_DEQ);
+
+  if (arx_ring == NULL) {
+    fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+    return -1;
+  }
+
+  /* Init ATX queue */
+  snprintf(name, 64, "appctx_tx_");
+  atx_ring = rte_ring_create(name, RING_SIZE, rte_socket_id(),
+          RING_F_SP_ENQ);
+
+  if (atx_ring == NULL) {
+    fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+    return -1;
   }
 
   return 0;

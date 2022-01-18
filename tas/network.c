@@ -45,9 +45,10 @@
 #include <tas.h>
 
 #define BUFFER_SIZE 2048
-#define PERTHREAD_MBUFS 2048
-#define SLOWPATH_MBUFS  256
-#define MBUF_SIZE (BUFFER_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
+#define RX_PERSEQR_MBUFS 2048
+#define TX_MBUFS         2048
+#define SLOWPATH_MBUFS   256
+#define MBUF_SIZE   (BUFFER_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
 #define RX_DESCRIPTORS 2048
 #define TX_DESCRIPTORS 2048
 #define MAX_ETH_RXQ    NUM_SEQ_CTXS
@@ -83,7 +84,7 @@ static struct rte_eth_dev_info eth_devinfo;
 #endif
 
 struct rte_mempool *rx_pkt_mempools[NUM_SEQ_CTXS];
-extern struct rte_mempool *tx_pkt_mempool;
+struct rte_mempool *tx_pkt_mempool;
 struct rte_mempool *sp_pkt_mempool;
 
 int network_init()
@@ -170,7 +171,7 @@ int network_init()
   /* Init RX queues */
   for (i = 0; i < n_rx; i++) {
     snprintf(name, 32, "rx_pktmbuf_pool_%u\n", i);
-    rx_pkt_mempools[i] = rte_mempool_create(name, PERTHREAD_MBUFS, MBUF_SIZE, 32,
+    rx_pkt_mempools[i] = rte_mempool_create(name, RX_PERSEQR_MBUFS, MBUF_SIZE, 32,
           sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init, NULL,
           rte_pktmbuf_init, NULL, rte_socket_id(), 0);
     if (rx_pkt_mempools[i] == NULL) {
@@ -202,6 +203,16 @@ int network_init()
           sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init, NULL,
           rte_pktmbuf_init, NULL, rte_socket_id(), 0);
   if (sp_pkt_mempool == NULL) {
+    fprintf(stderr, "network_thread_init: rte_mempool_create failed\n");
+    return -1; 
+  }
+
+  /* Init TX PKT mempool */
+  snprintf(name, 32, "tx_pktmbuf_pool");
+  tx_pkt_mempool = rte_mempool_create(name, TX_MBUFS, MBUF_SIZE, 32,
+          sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init, NULL,
+          rte_pktmbuf_init, NULL, rte_socket_id(), 0);
+  if (tx_pkt_mempool == NULL) {
     fprintf(stderr, "network_thread_init: rte_mempool_create failed\n");
     return -1; 
   }

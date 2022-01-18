@@ -211,7 +211,7 @@ struct sched_bump_t {
 STATIC_ASSERT(sizeof(struct sched_bump_t) == sizeof(void *), sched_bump_size);
 
 extern struct rte_ring *sched_bump_queue;
-extern struct rte_ring *sched_tx_queue;
+extern struct rte_ring *sched_tx_queues[NUM_FLOWGRPS];
 
 /******************************************************************/
 

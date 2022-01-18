@@ -12,9 +12,7 @@
 #include "packet_defs.h"
 #include "tas.h"
 
-#define BATCH_SIZE 32
-
-static struct work_t null_work;
+#define BATCH_SIZE 16
 
 struct preproc_thread_conf {
 
@@ -53,7 +51,7 @@ static void prepare_rx_work(struct rte_mbuf *pkt,
   struct work_t *w = (struct work_t *) pkt->buf_addr; // Use the headroom to store metadata
   struct pkt_tcp_ts *p = rte_pktmbuf_mtod(pkt, struct pkt_tcp_ts *);
 
-  rte_memcpy(w, &null_work, sizeof(struct work_t));
+  memset(w, 0, sizeof(struct work_t));
 
   w->type = WORK_TYPE_RX;
   w->flags = 0;
@@ -98,86 +96,6 @@ static void prepare_ack_header(struct pkt_tcp_ts *p)
   p->ip.len = t_beui16(sizeof(struct pkt_tcp_ts) - offsetof(struct pkt_tcp_ts, ip));
   p->ip.ttl = 0xff;
 }
-
-#if 0
-static void prepare_seg_header(struct pkt_tcp_ts *p,
-                               struct flextcp_pl_flowst_conn_t *conn_info)
-{
-  p->eth.dest = conn_info->remote_mac;
-  memcpy(&p->eth.src, &eth_addr, ETH_ADDR_LEN);
-  p->eth.type = t_beui16(ETH_TYPE_IP);
-
-  IPH_VHL_SET(&p->ip, 4, 5);
-  p->ip._tos = 0;
-  p->ip.len = t_beui16(sizeof(struct pkt_tcp_ts) - offsetof(struct pkt_tcp_ts, ip));    /*> correct value incl. pyld. filled by postproc */
-  p->ip.id = t_beui16(3); /* TODO: not sure why we have 3 here */
-  p->ip.offset = t_beui16(0);
-  p->ip.ttl = 0xff;
-  p->ip.proto = IP_PROTO_TCP;
-  p->ip.chksum = 0;
-  p->ip.src = fs->local_ip;
-  p->ip.dest = fs->remote_ip;
-
-  /* mark as ECN capable if flow marked so */
-  if ((conn_info->flags & FLEXNIC_PL_FLOWST_ECN) == FLEXNIC_PL_FLOWST_ECN) {
-    IPH_ECN_SET(&p->ip, IP_ECN_ECT0);
-  }
-
-  p->tcp.src = fs->local_port;
-  p->tcp.dest = fs->remote_port;
-
-  p->ts_opt.kind = TCP_OPT_TIMESTAMP;
-  p->ts_opt.length = sizeof(struct tcp_timestamp_opt);
-  p->pad = 0;
-}
-
-static unsigned preprocess_tx(uint16_t txq)
-{
-  unsigned i, num, ret;
-  
-  struct sched_tx_t tx[BATCH_SIZE];
-  struct rte_mbuf *pkts[BATCH_SIZE];
-  struct flextcp_pl_flowst_conn_t *conns[BATCH_SIZE];
-  struct work_t *work[BATCH_SIZE];
-
-  num = rte_ring_mc_dequeue_burst(sched_queues[txq], (void **) tx, BATCH_SIZE, NULL);
-  if (num == 0)
-    return 0;
-
-  /* Prefetch connection state */
-  for (i = 0; i < num; i++) {
-    conns[i] = &fp_state->flows_conn_info[tx[i].flow_id];
-    rte_prefetch0(conns[i]);
-  }
-
-  /* Allocate mbufs */
-  if (rte_pktmbuf_alloc_bulk(tx_mbuf_pool, pkts, num) != 0)
-    return 0; // FIXME: we discard the scheduled entries here!
-
-  /* Prefetch mbufs */
-  for (i = 0; i < num; i++) {
-    rte_prefetch0(pkts[i]);
-    rte_prefetch0((((uint8_t *) pkts[i]) + sizeof(struct rte_mbuf)));
-    rte_prefetch0((((uint8_t *) pkts[i]) + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM));
-
-    work_t[i] = (((uint8_t *) pkts[i]) + sizeof(struct rte_mbuf));
-  }
-
-  /* Prepare segment header */
-  for (i = 0; i < num; i++) {
-    prepare_seg_header(tx[i], pkts[i], conns[i]);
-    prepare_tx_work_desc(tx[i], work[i]);
-  }
-
-  ret = rte_ring_mp_enqueue_burst(preproc_queues[txq], work, num, NULL);
-
-  for (i = ret; i < num; i++) {
-    rte_pktmbuf_free_seg(sp_pkts[i]);   // NOTE: We do not handle chained mbufs here! 
-  }
-
-  return num;
-}
-#endif
 
 static unsigned preprocess_rx(uint16_t rxq)
 {
@@ -274,6 +192,107 @@ slowpath:
   return num_rx;
 }
 
+static void prepare_tx_work(struct rte_mbuf   *pkt,
+                            struct sched_tx_t tx)
+{
+  struct work_t *w = (struct work_t *) pkt->buf_addr; // Use the headroom to store metadata
+
+  rte_pktmbuf_data_len(pkt) = rte_pktmbuf_pkt_len(pkt) = sizeof(struct pkt_tcp_ts);
+  memset(w, 0, sizeof(struct work_t));
+
+  w->type = WORK_TYPE_TX;
+  w->flags = ((tx.flags & SCHED_FLAG_TX_FORCE) == 0 ? 0 : WORK_FLAG_QM_FORCE);
+  w->len = tx.len;
+  w->flow_id = tx.flow_id;
+  w->flow_grp = tx.flow_grp;
+  w->reorder_seqn = 0;
+  w->mbuf = pkt;
+}
+
+static void prepare_seg_header(struct pkt_tcp_ts *p,
+                               struct flextcp_pl_flowst_conn_t *conn)
+{
+  p->eth.dest = conn->remote_mac;
+  memcpy(&p->eth.src, &eth_addr, ETH_ADDR_LEN);
+  p->eth.type = t_beui16(ETH_TYPE_IP);
+
+  IPH_VHL_SET(&p->ip, 4, 5);
+  p->ip._tos = 0;
+  p->ip.len = t_beui16(sizeof(struct pkt_tcp_ts) - offsetof(struct pkt_tcp_ts, ip));    /*> correct value incl. pyld. filled by postproc */
+  p->ip.id = t_beui16(3); /* TODO: not sure why we have 3 here */
+  p->ip.offset = t_beui16(0);
+  p->ip.ttl = 0xff;
+  p->ip.proto = IP_PROTO_TCP;
+  p->ip.chksum = 0;
+  p->ip.src = conn->local_ip;
+  p->ip.dest = conn->remote_ip;
+
+  /* mark as ECN capable if flow marked so */
+  if ((conn->flags & FLEXNIC_PL_FLOWST_ECN) == FLEXNIC_PL_FLOWST_ECN) {
+    IPH_ECN_SET(&p->ip, IP_ECN_ECT0);
+  }
+
+  p->tcp.src = conn->local_port;
+  p->tcp.dest = conn->remote_port;
+
+  p->ts_opt.kind = TCP_OPT_TIMESTAMP;
+  p->ts_opt.length = sizeof(struct tcp_timestamp_opt);
+  p->pad = 0;
+}
+
+static unsigned preprocess_tx(uint16_t txq)
+{
+  unsigned i, num_tx, num_enq;
+  
+  struct sched_tx_t tx[BATCH_SIZE];
+  struct rte_mbuf *pkts[BATCH_SIZE];
+  struct flextcp_pl_flowst_conn_t *conns[BATCH_SIZE];
+  struct workptr_t proc_pkts[BATCH_SIZE];
+
+  num_tx = rte_ring_mc_dequeue_burst(sched_tx_queues[txq], (void **) tx, BATCH_SIZE, NULL);
+  if (num_tx == 0)
+    return 0;
+
+  /* Prefetch connection state */
+  for (i = 0; i < num_tx; i++) {
+    conns[i] = &fp_state->flows_conn_info[tx[i].flow_id];
+    rte_prefetch0(conns[i]);
+  }
+
+  /* Allocate mbufs */
+  if (rte_pktmbuf_alloc_bulk(tx_pkt_mempool, pkts, num_tx) != 0)
+    return 0; // FIXME: we discard the scheduled entries here!
+
+  /* Prefetch mbufs */
+  for (i = 0; i < num_tx; i++) {
+    rte_prefetch0(pkts[i]);
+    rte_prefetch0((((uint8_t *) pkts[i]) + sizeof(struct rte_mbuf)));
+    rte_prefetch0((((uint8_t *) pkts[i]) + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM));
+  }
+  
+  for (i = 0; i < num_tx; i++) {
+    /* Prepare work descriptor */
+    prepare_tx_work(pkts[i], tx[i]);
+
+    /* Prepare segment header */
+    prepare_seg_header(rte_pktmbuf_mtod(pkts[i], struct pkt_tcp_ts *), conns[i]);
+
+    proc_pkts[i].__rawptr = 0;
+    proc_pkts[i].type = WORK_TYPE_TX;
+    proc_pkts[i].flow_id = tx[i].flow_id;
+    proc_pkts[i].flow_grp = tx[i].flow_grp;
+    proc_pkts[i].addr = BUF_TO_PTR(pkts[i]);
+  }
+
+  num_enq = rte_ring_mp_enqueue_burst(protocol_workqueues[txq], (void **) proc_pkts, num_tx, NULL);
+
+  for (i = num_enq; i < num_tx; i++) {
+    rte_pktmbuf_free_seg(pkts[i]);   // NOTE: We do not handle chained mbufs here! 
+  }
+
+  return num_tx;
+}
+
 void preproc_thread_init(struct preproc_thread_conf *conf) {
   (void) conf;
 
@@ -281,18 +300,19 @@ void preproc_thread_init(struct preproc_thread_conf *conf) {
 }
 
 int preproc_thread(void *args) {
-  uint16_t rxq;
+  uint16_t q;
   struct preproc_thread_conf *conf = (struct preproc_thread_conf *) args;
 
   preproc_thread_init(conf);
 
-  rxq = 0;
+  q = 0;
   while (1) {
-    preprocess_rx(rxq);
+    preprocess_rx(q);
+    preprocess_tx(q);
 
-    rxq++;
-    if (rxq == NUM_FLOWGRPS)
-      rxq = 0;
+    q++;
+    if (q == NUM_FLOWGRPS)
+      q = 0;
   }
 
   return EXIT_SUCCESS;
