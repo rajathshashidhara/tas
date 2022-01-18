@@ -50,7 +50,7 @@ static unsigned poll_rx(uint16_t port_id, uint16_t rxq)
     nbi_pkts[i].mbuf = BUF_TO_PTR(rx_pkts[i]);
   }
 
-  m = rte_ring_sp_enqueue_burst(nbi_rx_queue, (void **) nbi_pkts, n, NULL);
+  m = rte_ring_sp_enqueue_burst(nbi_rx_queues[rxq], (void **) nbi_pkts, n, NULL);
 
   /* Free packets on enqueue failure */
   for (i = m; i < n; i++) {
@@ -60,7 +60,7 @@ static unsigned poll_rx(uint16_t port_id, uint16_t rxq)
   return n;
 }
 
-static unsigned poll_tx()
+static unsigned poll_tx(uint16_t txq)
 {
   unsigned n, m, i;
   uint16_t seqr, seq;
@@ -69,7 +69,7 @@ static unsigned poll_tx()
   struct rte_mbuf *free_pkts[BATCH_SIZE];
 
   /* Poll for TX packets */
-  n = rte_ring_sc_dequeue_burst(nbi_tx_queue, (void **) nbi_pkts, BATCH_SIZE, NULL);
+  n = rte_ring_sc_dequeue_burst(nbi_tx_queues[txq], (void **) nbi_pkts, BATCH_SIZE, NULL);
 
   if (n == 0)
     return 0;
@@ -154,12 +154,11 @@ int nbi_thread(void *args)
   txq_end = txq_start + conf->nb_tx;
 
   while (1) {
-    poll_tx();
-
     poll_rx(port_id, rxq);
     if (++rxq == rxq_end)
       rxq = rxq_start;
 
+    poll_tx(txq);
     poll_sequencers(port_id, txq);
     if (++txq == txq_end)
       txq = txq_start;

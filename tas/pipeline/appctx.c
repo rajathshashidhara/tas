@@ -12,11 +12,7 @@
 #include "tas_memif.h"
 #include "dma.h"
 #include "pipeline.h"
-
-extern struct rte_mempool *arx_desc_pool;        /*> Pool for RX APPCTX descriptors */
-extern struct rte_mempool *atx_desc_pool;        /*> Pool for TX APPCTX descriptors */
-
-extern void notify_appctx(struct flextcp_pl_appctx *ctx, uint64_t tsc);
+#include "tas.h"
 
 #define BATCH_SIZE      16
 

@@ -8,8 +8,9 @@
 #include "utils.h"
 #include "tas_memif.h"
 
-#define NUM_SEQ_CTXS          2
+#define NUM_SEQ_CTXS          1
 #define NUM_FLOWGRPS          NUM_SEQ_CTXS
+#define SP_SEQ_CTX            NUM_SEQ_CTXS        /*> Slowpath uses its own TXQ */
 STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
 
 
@@ -44,8 +45,8 @@ struct nbi_pkt_t {
 };
 STATIC_ASSERT(sizeof(struct nbi_pkt_t) == sizeof(void *), nbipkt_size);
 
-extern struct rte_ring *nbi_rx_queue;
-extern struct rte_ring *nbi_tx_queue;
+extern struct rte_ring *nbi_rx_queues[NUM_SEQ_CTXS];
+extern struct rte_ring *nbi_tx_queues[NUM_SEQ_CTXS];
 
 /******************************************************************/
 
@@ -116,7 +117,12 @@ struct work_t {
 };
 STATIC_ASSERT(sizeof(struct work_t) == RTE_CACHE_LINE_SIZE, work_size);
 
+extern struct rte_ring *sp_rx_ring;
 extern struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
+extern struct rte_mempool *sp_pkt_mempool;
+extern struct rte_mempool *tx_pkt_mempool;
+extern struct rte_hash *flow_lookup_table;
+
 
 /******************************************************************/
 
@@ -156,33 +162,16 @@ STATIC_ASSERT(sizeof(struct appctx_desc_t) == RTE_CACHE_LINE_SIZE, actx_desc_siz
 
 extern struct rte_ring *atx_ring;
 extern struct rte_ring *arx_ring;
+extern struct rte_mempool *arx_desc_pool;        /*> Pool for RX APPCTX descriptors */
+extern struct rte_mempool *atx_desc_pool;        /*> Pool for TX APPCTX descriptors */
 
 /******************************************************************/
 
-struct dma_cmd_t {
-  union {
-    struct {
-      uint16_t len0;
-      uint16_t len1;
-
-      uint32_t flow_id;
-      uint16_t flow_grp;
-      uint16_t actx_id;
-
-      struct rte_mbuf *buf;
-      struct appctx_desc_t *desc;
-      
-      uintptr_t src_addr0;
-      uintptr_t dst_addr0;
-
-      uintptr_t src_addr1;
-      uintptr_t dst_addr1;
-    } __attribute__((packed));
-
-    uint32_t __raw[16];
-  };
-} __attribute__((packed));
-STATIC_ASSERT(sizeof(struct dma_cmd_t) == RTE_CACHE_LINE_SIZE, dma_cmd_size);
+/**
+ * 
+ * Scheduler block.
+ * 
+ */
 
 #define SCHED_FLAG_TX_FORCE   (1 << 0)
 
@@ -211,5 +200,36 @@ struct sched_bump_t {
   };
 } __attribute__((packed));
 STATIC_ASSERT(sizeof(struct sched_bump_t) == sizeof(void *), sched_bump_size);
+
+extern struct rte_ring *sched_bump_queue;
+extern struct rte_ring *sched_tx_queue;
+
+/******************************************************************/
+
+struct dma_cmd_t {
+  union {
+    struct {
+      uint16_t len0;
+      uint16_t len1;
+
+      uint32_t flow_id;
+      uint16_t flow_grp;
+      uint16_t actx_id;
+
+      struct rte_mbuf *buf;
+      struct appctx_desc_t *desc;
+      
+      uintptr_t src_addr0;
+      uintptr_t dst_addr0;
+
+      uintptr_t src_addr1;
+      uintptr_t dst_addr1;
+    } __attribute__((packed));
+
+    uint32_t __raw[16];
+  };
+} __attribute__((packed));
+STATIC_ASSERT(sizeof(struct dma_cmd_t) == RTE_CACHE_LINE_SIZE, dma_cmd_size);
+
 
 #endif /* TAS_PIPELINE_H_ */

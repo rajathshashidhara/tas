@@ -42,6 +42,7 @@
 #include <rte_mbuf.h>
 #include <rte_mempool.h>
 #include <rte_hash_crc.h>
+#include <rte_ethdev.h>
 
 #define PKTBUF_SIZE 1536
 
@@ -91,6 +92,8 @@ static struct nic_buffer **txq_bufs;
 static volatile struct flextcp_pl_ktx **txq_base;
 static uint32_t txq_len;
 static uint32_t *txq_tail;
+
+extern uint8_t net_port_id;
 
 int nicif_init(void)
 {
@@ -388,13 +391,14 @@ int nicif_tx_alloc(uint16_t len, void **pbuf, void **opaque)
 void nicif_tx_send(void *opaque)
 {
   int ret;
-  struct rte_mbuf *pkt = (struct rte_mbuf *) opaque;
+  struct rte_mbuf *pkts[1];
+  pkts[0] = (struct rte_mbuf *) opaque;
 
-  ret = rte_ring_sp_enqueue(sp_tx_ring, pkt);
+  ret = rte_eth_tx_burst(net_port_id, SP_SEQ_CTX, pkts, 1);
   
   /* Free packet if tx is unsuccessful */
-  if (ret < 0) {
-    rte_pktmbuf_free_seg(pkt);
+  if (ret < 1) {
+    rte_pktmbuf_free_seg(pkts[0]);
   }
 }
 
