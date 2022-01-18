@@ -17,7 +17,8 @@ STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
 #define NUM_NBI_CORES               1
 #define NUM_PREPROC_CORES           1
 #define NUM_APPCTX_CORES            1
-#define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_APPCTX_CORES)
+#define NUM_PROTOCOL_CORES          1
+#define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_APPCTX_CORES)
 
 #define BUF_FROM_PTR(WPTR)      ((void *) ((((intptr_t) (WPTR).__rawptr) << 22) >> 16))
 #define BUF_TO_PTR(BUF)       ((((uintptr_t) (BUF)) >> 6) & ((0x1ull << 42) - 1))
@@ -126,12 +127,14 @@ STATIC_ASSERT(sizeof(struct work_t) == RTE_CACHE_LINE_SIZE, work_size);
 
 extern struct rte_ring *sp_rx_ring;
 extern struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
+extern struct rte_ring *postproc_workqueue;
 extern struct rte_mempool *sp_pkt_mempool;
 extern struct rte_mempool *tx_pkt_mempool;
 extern struct rte_mempool *rx_pkt_mempools[NUM_SEQ_CTXS];
 extern struct rte_hash *flow_lookup_table;
 
 int preproc_thread(void *args);
+int protocol_thread(void *args);
 
 /******************************************************************/
 

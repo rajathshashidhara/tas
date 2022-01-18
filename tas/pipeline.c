@@ -30,6 +30,7 @@
 struct rte_ring *nbi_rx_queue;
 struct rte_ring *nbi_tx_queues[NUM_SEQ_CTXS];
 struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
+struct rte_ring *postproc_workqueue;
 struct rte_hash *flow_lookup_table;
 struct rte_ring *sp_rx_ring;
 struct rte_ring *sched_tx_queue;
@@ -104,13 +105,22 @@ int pipeline_init()
   /* Init Protocol workqueues */
   for (i = 0; i < NUM_FLOWGRPS; i++) {
     snprintf(name, 64, "protocol_wq_%u", i);
-    protocol_workqueues[i] = rte_ring_create(name, RING_SIZE, rte_socket_id(),
-            RING_F_SC_DEQ);
+    protocol_workqueues[i] = rte_ring_create(name, 4 * RING_SIZE, rte_socket_id(),
+            RING_F_SC_DEQ);   // 4 -> (RX + TX + AC + RETX)
     
     if (protocol_workqueues[i] == NULL) {
       fprintf(stderr, "%s: %d\n", __func__, __LINE__);
       return -1;
     }
+  }
+
+  /* Init postproc workqueue */
+  snprintf(name, 64, "postproc_wq_");
+  postproc_workqueue = rte_ring_create(name, 4 * NUM_FLOWGRPS * RING_SIZE, rte_socket_id(),
+            0);   // 4 -> (RX + TX + AC + RETX) * NUM_FLOWGRPS
+  if (postproc_workqueue == NULL) {
+    fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+    return -1;
   }
 
   /* Init scheduler queue */

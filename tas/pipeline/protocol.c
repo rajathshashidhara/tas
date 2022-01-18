@@ -8,19 +8,21 @@
 
 #include "utils_reorder.h"
 
+#include "tas.h"
 #include "tas_memif.h"
 #include "pipeline.h"
 
+#define TCP_MSS 1448
 #define TCP_MAX_RTT 100000
 
+#define REORDER_BUFFER_SIZE   2048
 #define BATCH_SIZE 32
-extern struct utils_reorder_buffer *rob[MAX_FLOWGRPS];
-extern struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
-extern struct rte_ring *postproc_workqueue;
+
+struct utils_reorder_buffer *rx_sequencer[NUM_FLOWGRPS];
+uint16_t protocol_seqno[NUM_FLOWGRPS];
 
 struct protocol_thread_conf {
-  uint16_t flow_grp_start;
-  uint16_t nb_flow_grp;
+
 };
 
 //#define SKIP_ACK 1
@@ -45,7 +47,7 @@ static int tcp_valid_rxack(struct flextcp_pl_flowst_tcp_t *fs,
   tx_sent = fs->tx_sent + fs->tx_avail;
 
   hole = ack - next_ack;
-  if (hole > next_ack)
+  if (hole > tx_sent)
     return -1;
 
   *bump = hole;
@@ -95,7 +97,7 @@ static int tcp_trim_rxbuf(struct flextcp_pl_flowst_tcp_t *fs,
   return 0;
 }
 
-static int tcp_valid_rxseq(struct flextcp_pl_flowst_tcp_t *fs,
+__rte_unused static int tcp_valid_rxseq(struct flextcp_pl_flowst_tcp_t *fs,
                 uint32_t pkt_seq, uint32_t pkt_bytes,
                 uint32_t *trim_start, uint32_t *trim_end)
 {
@@ -180,8 +182,6 @@ static void flows_ac(struct flextcp_pl_flowst_tcp_t *fs,
 
 static void flows_gobackN_retransmit(struct flextcp_pl_flowst_tcp_t *fs)
 {
-  uint32_t x;
-
   fs->dupack_cnt = 0;
   fs->tx_next_seq -= fs->tx_sent;
   fs->tx_avail += fs->tx_sent;
@@ -192,7 +192,7 @@ static void flows_gobackN_retransmit(struct flextcp_pl_flowst_tcp_t *fs)
 }
 
 static void flows_retx(struct flextcp_pl_flowst_tcp_t *fs,
-                       struct work_t *work)
+                       uint32_t *qm_bump)
 {
   uint32_t old_avail, new_avail;
 
@@ -200,7 +200,7 @@ static void flows_retx(struct flextcp_pl_flowst_tcp_t *fs,
   flows_gobackN_retransmit(fs);
   new_avail = tcp_txavail(fs, 0);
 
-  work->qm_bump = (old_avail < new_avail) ? (new_avail - old_avail) : 0;
+  *qm_bump = (old_avail < new_avail) ? (new_avail - old_avail) : 0;
 }
 
 static void flows_ack(struct flextcp_pl_flowst_tcp_t *fs,
@@ -213,6 +213,7 @@ static void flows_ack(struct flextcp_pl_flowst_tcp_t *fs,
   uint32_t rtt;
 
   flags = 0;
+  tx_bump = 0;
   old_avail = tcp_txavail(fs, 0);
 
   fs->cnt_rx_acks++;
@@ -245,7 +246,7 @@ static void flows_ack(struct flextcp_pl_flowst_tcp_t *fs,
     else {
       if (++fs->dupack_cnt >= 3) {
         /* Fast retransmit */
-        flows_reset_retransmit(fs);
+        flows_gobackN_retransmit(fs);
         goto finalize;
       }
     }
@@ -463,9 +464,9 @@ static uint32_t generate_timestamp(uint64_t tsc) {
   if (freq == 0)
     freq = rte_get_tsc_hz();
 
-  cycles *= 1000000ULL;
-  cycles /= freq;
-  return cycles;
+  tsc *= 1000000ULL;
+  tsc /= freq;
+  return tsc;
 }
 
 static unsigned poll_reorder_queue(unsigned flow_grp,
@@ -478,21 +479,20 @@ static unsigned poll_reorder_queue(unsigned flow_grp,
   struct work_t *work;
   struct flextcp_pl_flowst_tcp_t *fs;
 
-  num = utils_reorder_drain(rob[flow_grp], (void **) workptrs, max_num);
+  num = utils_reorder_drain(rx_sequencer[flow_grp], (void **) workptrs, max_num);
   if (num == 0)
     return 0;
 
   /* Prefetch flowstate */
   for (i = 0; i < num; i++) {
-    work = (struct work_t *) workptrs[i].addr;
-    fs = &fp_state->flowst_tcp_state[work->flow_id];
+    fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
     rte_prefetch0(fs);
   }
 
   /* Process RX work */
   for (i = 0; i < num; i++) {
-    work = (struct work_t *) workptrs[i].addr;
-    fs = &fp_state->flowst_tcp_state[work->flow_id];
+    work = (struct work_t *) RTE_PTR_ADD(BUF_FROM_PTR(workptrs[i]), sizeof(struct rte_mbuf *));
+    fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
 
     if (work->len == 0) {
       flows_ack(fs, work, ts);
@@ -501,6 +501,10 @@ static unsigned poll_reorder_queue(unsigned flow_grp,
       flows_seg(fs, work, ts);
     }
 
+    work->flags |= WORK_FLAG_RESULT;
+    if ((work->flags & WORK_FLAG_TX) == WORK_FLAG_TX) {
+      work->reorder_seqn = protocol_seqno[flow_grp]++;
+    }
     results[i] = workptrs[i];
   }
 
@@ -513,89 +517,108 @@ static unsigned poll_protocol_workqueues(unsigned flow_grp,
 {
   struct workptr_t workptrs[BATCH_SIZE];
   unsigned i, num, num_enq;
-  uint32_t retx_result;
-  int ret;
+  uint32_t retx_qm_bump;
 
   struct work_t *work;
   struct flextcp_pl_flowst_tcp_t *fs;
 
-  num = rte_ring_sc_dequeue_burst(protocol_workqueues[flow_grp], (void **) workptrs, max_num);
+  num = rte_ring_sc_dequeue_burst(protocol_workqueues[flow_grp], (void **) workptrs, max_num, NULL);
   if (num == 0)
     return 0;
 
   /* Prefetch */
   for (i = 0; i < num; i++) {
     work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
-    fs = &fp_state->flowst_tcp_state[workptrs[i].flow_id];
+    fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
 
     rte_prefetch0(work);
     rte_prefetch0(fs);
   }
 
   /* Handle work */
+  num_enq = 0;
   for (i = 0; i < num; i++) {
-    work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
-    fs = &fp_state->flowst_tcp_state[workptrs[i].flow_id];
+    fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
 
     switch (workptrs[i].type) {
     case WORK_TYPE_RX:
-      ret = utils_reorder_insert(rob[workptrs[i].flow_grp], workptrs[i], work->reorder_seqn);
-      if (ret != 0) {
-        results[num_enq++] = workptrs[i];   /* Add to free */
+      if (utils_reorder_insert(rx_sequencer[flow_grp], (void *) workptrs[i].__rawptr, work->reorder_seqn) != 0) {
+        results[num_enq++] = workptrs[i];   /* Add to free */      
       }
       break;
 
     case WORK_TYPE_TX:
+      work = (struct work_t *) RTE_PTR_ADD(BUF_FROM_PTR(workptrs[i]), sizeof(struct rte_mbuf *));
       flows_tx(fs, work, ts);
+      work->flags |= WORK_FLAG_RESULT;
+      if ((work->flags & WORK_FLAG_TX) == WORK_FLAG_TX) {
+        work->reorder_seqn = protocol_seqno[flow_grp]++;
+      }
       results[num_enq++] = workptrs[i];
       break;
     
     case WORK_TYPE_AC:
+      work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
       flows_ac(fs, work);
+      work->flags |= WORK_FLAG_RESULT;
       results[num_enq++] = workptrs[i];
       break;
 
     case WORK_TYPE_RETX:
-      flows_retx(fs, &retx_result);
+      flows_retx(fs, &retx_qm_bump);
+      workptrs[i].addr = retx_qm_bump;
       results[num_enq++] = workptrs[i];
-      break;      
+      break;
     }
   }
 
   return num_enq;
 }
 
+static void protocol_thread_init(struct protocol_thread_conf *conf)
+{
+  unsigned i;
+  (void) conf;
+
+  for (i = 0; i < NUM_FLOWGRPS; i++) {
+    rx_sequencer[i] = utils_reorder_init(rte_socket_id(), REORDER_BUFFER_SIZE);
+
+    if (rx_sequencer[i] == NULL) {
+      fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+      abort();
+    }
+
+    protocol_seqno[i] = 0;
+  }
+}
+
 int protocol_thread(void *args)
 {
-  unsigned i, num, num_enq;
-  unsigned fgp, fgp_x, fgp_y;
+  unsigned num, num_enq;
+  unsigned fgp;
   struct protocol_thread_conf *conf = (struct protocol_thread_conf *) args;
-  struct workptr_t work[BATCH_SIZE];
   struct workptr_t result[BATCH_SIZE];
-
-  struct flextcp_pl_flowst_tcp_t *fs;
-  struct work_t *work;
 
   uint64_t cyc;
   uint32_t ts;
 
-  fgp_x = conf->flow_grp_start;
-  fgp_y = fgp_x + conf->nb_flow_grp;
-  
-  fgp = fgp_x;
+  protocol_thread_init(conf);
+
   while (1) {
-    cyc = rte_get_tsc_cycles();
-    ts = qman_timestamp(cyc);
-    num = 0;
+    for (fgp = 0; fgp < NUM_FLOWGRPS; fgp++) {
+      cyc = rte_get_tsc_cycles();
+      ts = generate_timestamp(cyc);
+      num = 0;
 
-    num += poll_reorder_queue(fgp, result, BATCH_SIZE, ts);
-    num += poll_protocol_workqueues(fgp, &result[num], BATCH_SIZE - num, ts);
+      num += poll_reorder_queue(fgp, result, BATCH_SIZE, ts);
+      num += poll_protocol_workqueues(fgp, &result[num], BATCH_SIZE - num, ts);
 
-    num_enq = rte_ring_sp_enqueue_burst(postproc_workqueue, result, num);
-    if (num < num_enq) {
-      /* TODO:How to handle this? */
-      fprintf(stderr, "%s:%d\n", __func__, __LINE__);
-      abort();
+      num_enq = rte_ring_sp_enqueue_burst(postproc_workqueue, (void **) result, num, NULL);
+      if (num < num_enq) {
+        /* TODO:How to handle this? */
+        fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+        abort();
+      }
     }
   }
 

@@ -173,7 +173,10 @@ static int common_thread(void *arg)
   else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES)) {
     preproc_thread(NULL);
   }
-  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_APPCTX_CORES)) {
+  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES)) {
+    protocol_thread(NULL);
+  }
+  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_APPCTX_CORES)) {
     appctx_thread(NULL);
   }
 
