@@ -107,8 +107,10 @@ int shm_init(unsigned num)
   tas_info->qmq_num = FLEXNIC_NUM_QMQUEUES;
   tas_info->cores_num = num;
   tas_info->mac_address = 0;
-  tas_info->poll_cycle_app = us_to_cycles(config.fp_poll_interval_app);
-  tas_info->poll_cycle_tas = us_to_cycles(config.fp_poll_interval_tas);
+  // tas_info->poll_cycle_app = us_to_cycles(config.fp_poll_interval_app);
+  // tas_info->poll_cycle_tas = us_to_cycles(config.fp_poll_interval_tas);
+  tas_info->poll_cycle_app = us_to_cycles(UINT32_MAX);  // FIXME
+  tas_info->poll_cycle_tas = us_to_cycles(UINT32_MAX);  // FIXME
 
   if (config.fp_hugepages)
     tas_info->flags |= FLEXNIC_FLAG_HUGEPAGES;

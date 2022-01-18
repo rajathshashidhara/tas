@@ -28,6 +28,8 @@
 #include <unistd.h>
 #include <signal.h>
 #include <assert.h>
+#include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <pthread.h>
 
 #include <rte_config.h>
@@ -42,6 +44,7 @@
 
 #include <tas.h>
 #include <pipeline.h>
+#include <fastpath.h>
 
 struct core_load {
   uint64_t cyc_busy;
@@ -54,9 +57,10 @@ unsigned fp_cores_max;
 static unsigned threads_launched = 0;
 int exited;
 
+struct dataplane_context **ctxs = NULL;
+
 static int start_threads(void);
 static int common_thread(void *arg);
-
 
 static void *slowpath_thread(void)
 {
@@ -144,6 +148,7 @@ error_exit:
 
 static int common_thread(void *arg)
 {
+  struct dataplane_context *ctx;
   uint16_t id = (uintptr_t) arg;
 
   {
@@ -152,8 +157,21 @@ static int common_thread(void *arg)
     pthread_setname_np(pthread_self(), name);
   }
 
-  if (id == 0) {
+  /* Allocate fastpath core context */
+  if ((ctx = rte_zmalloc("fastpath core context", sizeof(*ctx), 0)) == NULL) {
+    fprintf(stderr, "Allocating fastpath core context failed\n");
+    return EXIT_FAILURE;
+  }
+  ctxs[id] = ctx;
+  ctx->id = id;
+  ctx->evfd = eventfd(0, EFD_NONBLOCK);
+  fp_state->kctx[ctx->id].evfd = ctx->evfd;
+
+  if (id < NUM_NBI_CORES) {
     nbi_thread(NULL);
+  }
+  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES)) {
+    preproc_thread(NULL);
   }
 
   return EXIT_SUCCESS;
@@ -167,6 +185,11 @@ static int start_threads(void)
   cores_avail = rte_lcore_count();
   /* fast path cores + one slow path core */
   cores_needed = fp_cores_max + 1;
+
+  if ((ctxs = rte_calloc("context list", fp_cores_max, sizeof(*ctxs), 64)) == NULL) {
+    perror("datplane_init: calloc failed");
+    return -1;
+  }
 
   /* check that we have enough cores */
   if (cores_avail < cores_needed) {

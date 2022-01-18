@@ -60,6 +60,7 @@
 #include <utils_nbqueue.h>
 #include <tas_memif.h>
 #include <fastpath.h>
+#include <pipeline.h>
 
 /** epoll data for listening socket */
 #define EP_LISTEN (NULL)
@@ -353,8 +354,7 @@ static void uxsocket_accept(void)
 
     pfd = (int *) CMSG_DATA(cmsg);
     for (j = 0; j < n; j++) {
-      // pfd[j] = ctxs[off++]->evfd;
-      pfd[j] = 0; // FIXME
+      pfd[j] = ctxs[off++]->evfd;
     }
 
     /* send out kernel notify fd */

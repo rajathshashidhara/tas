@@ -205,10 +205,10 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
   int32_t f_id;
 
   struct {
-    ip_addr_t lip;
     ip_addr_t rip;
-    beui16_t lp;
+    ip_addr_t lip;
     beui16_t rp;
+    beui16_t lp;
   } __attribute__((packed)) key_4tuple =
       { .lip = lip, .rip = rip, .lp = lp, .rp = rp };
 

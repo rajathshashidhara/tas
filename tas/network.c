@@ -46,6 +46,7 @@
 
 #define BUFFER_SIZE 2048
 #define PERTHREAD_MBUFS 2048
+#define SLOWPATH_MBUFS  256
 #define MBUF_SIZE (BUFFER_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
 #define RX_DESCRIPTORS 2048
 #define TX_DESCRIPTORS 2048
@@ -193,6 +194,16 @@ int network_init()
       fprintf(stderr, "network_thread_init: rte_eth_tx_queue_setup failed\n");
       return -1;
     }
+  }
+
+  /* Init SP PKT mempool */
+  snprintf(name, 32, "sp_pktmbuf_pool");
+  sp_pkt_mempool = rte_mempool_create(name, SLOWPATH_MBUFS, MBUF_SIZE, 0,
+          sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init, NULL,
+          rte_pktmbuf_init, NULL, rte_socket_id(), 0);
+  if (sp_pkt_mempool == NULL) {
+    fprintf(stderr, "network_thread_init: rte_mempool_create failed\n");
+    return -1; 
   }
 
   /* Start device */
