@@ -245,10 +245,10 @@ static void prefetch_buffers(struct workptr_t wptr)
   switch (wptr.type) {
   case WORK_TYPE_RX:
   case WORK_TYPE_TX:
-    work = (struct work_t *) RTE_PTR_ADD(BUF_FROM_PTR(wptr), sizeof(struct rte_mbuf));
-    mb = (struct rte_mbuf *) BUF_FROM_PTR(wptr);
+    work = (struct work_t *) BUF_FROM_PTR(wptr);
+    mb = (struct rte_mbuf *) RTE_PTR_SUB(work, sizeof(struct rte_mbuf));
     conn = &fp_state->flows_mem_info[wptr.flow_id];
-    pkt = (struct pkt_tcp_ts *) RTE_PTR_ADD(BUF_FROM_PTR(wptr), sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM);
+    pkt = (struct pkt_tcp_ts *) RTE_PTR_ADD(work, RTE_PKTMBUF_HEADROOM);
     rte_prefetch0(work);
     rte_mbuf_prefetch_part1(mb);
     rte_mbuf_prefetch_part2(mb);

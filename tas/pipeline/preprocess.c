@@ -56,7 +56,7 @@ static void prepare_sp_work(struct preproc_ctx *ctx,
             struct rte_mbuf *pkt,
             struct nbi_pkt_t ndesc)
 {
-  unsigned idx;
+  unsigned idx, fgp;
   idx = ctx->num_sp;
 
   ctx->sp_work[idx].__rawptr = 0;
@@ -64,6 +64,16 @@ static void prepare_sp_work(struct preproc_ctx *ctx,
   ctx->sp_work[idx].flow_grp = ndesc.seqr;
   ctx->sp_work[idx].addr = BUF_TO_PTR(pkt);
   ctx->num_sp++;
+
+  /* Add seq skip step to protocol block */
+  fgp = ndesc.seqr;
+  idx = ctx->num_proc[fgp];
+  ctx->proc_work[fgp][idx].__rawptr = 0;
+  ctx->proc_work[fgp][idx].type = WORK_TYPE_RX;
+  ctx->proc_work[fgp][idx].flow_id = INVALID_FLOWID;
+  ctx->proc_work[fgp][idx].flow_grp = fgp;
+  ctx->proc_work[fgp][idx].addr = ndesc.seqno;
+  ctx->num_proc[fgp]++;
 }
 
 static void prepare_rx_work(struct preproc_ctx *ctx,
@@ -102,7 +112,8 @@ static void prepare_rx_work(struct preproc_ctx *ctx,
   ctx->proc_work[fgp][idx].type = WORK_TYPE_RX;
   ctx->proc_work[fgp][idx].flow_id = w->flow_id;
   ctx->proc_work[fgp][idx].flow_grp = ndesc.seqr;
-  ctx->proc_work[fgp][idx].addr = BUF_TO_PTR(pkt);
+  // ctx->proc_work[fgp][idx].addr = BUF_TO_PTR(pkt);
+  ctx->proc_work[fgp][idx].addr = BUF_TO_PTR(w);
 
   ctx->num_proc[fgp]++;
 }
@@ -219,7 +230,8 @@ static void prepare_tx_work(struct preproc_ctx *ctx,
   ctx->proc_work[fgp][idx].type = WORK_TYPE_TX;
   ctx->proc_work[fgp][idx].flow_id = tx.flow_id;
   ctx->proc_work[fgp][idx].flow_grp = tx.flow_grp;
-  ctx->proc_work[fgp][idx].addr = BUF_TO_PTR(pkt);
+  // ctx->proc_work[fgp][idx].addr = BUF_TO_PTR(pkt);
+  ctx->proc_work[fgp][idx].addr = BUF_TO_PTR(w);
 
   ctx->num_proc[fgp]++;
 }

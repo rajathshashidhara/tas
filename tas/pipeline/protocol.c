@@ -15,7 +15,7 @@
 #define TCP_MSS 1448
 #define TCP_MAX_RTT 100000
 
-#define REORDER_BUFFER_SIZE   2048
+#define REORDER_BUFFER_SIZE   128
 #define BATCH_SIZE 32
 
 struct utils_reorder_buffer *rx_sequencer[NUM_FLOWGRPS];
@@ -394,6 +394,7 @@ static void flows_seg(struct flextcp_pl_flowst_tcp_t *fs,
   }
 
   if (payload_bytes != 0) {
+    rx_bump = payload_bytes;
     work->dma_pos = fs->rx_next_seq;
     work->dma_len = payload_bytes;
     work->dma_off = trim_start;
@@ -474,7 +475,7 @@ static unsigned poll_reorder_queue(unsigned flow_grp,
         unsigned ts)
 {
   struct workptr_t workptrs[BATCH_SIZE];
-  unsigned i, num;
+  unsigned i, k, num;
 
   struct work_t *work;
   struct flextcp_pl_flowst_tcp_t *fs;
@@ -485,13 +486,19 @@ static unsigned poll_reorder_queue(unsigned flow_grp,
 
   /* Prefetch flowstate */
   for (i = 0; i < num; i++) {
+    if (workptrs[i].__rawptr == 0)
+      continue;
     fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
     rte_prefetch0(fs);
   }
 
   /* Process RX work */
+  k = 0;
   for (i = 0; i < num; i++) {
-    work = (struct work_t *) RTE_PTR_ADD(BUF_FROM_PTR(workptrs[i]), sizeof(struct rte_mbuf));
+    if (workptrs[i].__rawptr == 0)
+      continue;
+
+    work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
     fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
 
     if (work->len == 0) {
@@ -505,10 +512,10 @@ static unsigned poll_reorder_queue(unsigned flow_grp,
     if ((work->flags & WORK_FLAG_TX) == WORK_FLAG_TX) {
       work->reorder_seqn = protocol_seqno[flow_grp]++;
     }
-    results[i] = workptrs[i];
+    results[k++] = workptrs[i];
   }
 
-  return num;
+  return k;
 }
 
 static unsigned poll_protocol_workqueues(unsigned flow_grp,
@@ -531,24 +538,32 @@ static unsigned poll_protocol_workqueues(unsigned flow_grp,
     work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
     fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
 
-    rte_prefetch0(work);
-    rte_prefetch0(fs);
+    if (work != NULL && workptrs[i].flow_id != INVALID_FLOWID) {
+      rte_prefetch0(work);
+      rte_prefetch0(fs);
+    }
   }
 
   /* Handle work */
   num_enq = 0;
   for (i = 0; i < num; i++) {
+    work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
     fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
 
     switch (workptrs[i].type) {
     case WORK_TYPE_RX:
-      if (utils_reorder_insert(rx_sequencer[flow_grp], (void *) workptrs[i].__rawptr, work->reorder_seqn) != 0) {
-        results[num_enq++] = workptrs[i];   /* Add to free */      
+      if (workptrs[i].flow_id != INVALID_FLOWID) {
+        if (utils_reorder_insert(rx_sequencer[flow_grp], (void *) workptrs[i].__rawptr, work->reorder_seqn) != 0) {
+          results[num_enq++] = workptrs[i];   /* Add to free */      
+        }
+      }
+      else {
+        /* Insert seqn number for skip */
+        utils_reorder_insert(rx_sequencer[flow_grp], NULL, workptrs[i].addr);
       }
       break;
 
     case WORK_TYPE_TX:
-      work = (struct work_t *) RTE_PTR_ADD(BUF_FROM_PTR(workptrs[i]), sizeof(struct rte_mbuf));
       flows_tx(fs, work, ts);
       work->flags |= WORK_FLAG_RESULT;
       if ((work->flags & WORK_FLAG_TX) == WORK_FLAG_TX) {
@@ -558,7 +573,6 @@ static unsigned poll_protocol_workqueues(unsigned flow_grp,
       break;
     
     case WORK_TYPE_AC:
-      work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
       flows_ac(fs, work);
       work->flags |= WORK_FLAG_RESULT;
       results[num_enq++] = workptrs[i];

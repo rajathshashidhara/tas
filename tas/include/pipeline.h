@@ -82,6 +82,7 @@ enum {
 #define  WORK_FLAG_QM_FORCE             (1 << 4)     /*> Force QM to schedule transmission */
 #define  WORK_FLAG_IP_ECE               (1 << 5)     /*> CE notified in IP header          */
 #define  WORK_FLAG_RESULT               (1 << 7)     /*> Processed work                    */
+#define  INVALID_FLOWID                 ((1 << 17) - 1)
 
 struct workptr_t {
   union {
@@ -164,7 +165,7 @@ struct actxptr_t {
     void *__rawptr;
   };
 };
-STATIC_ASSERT(sizeof(struct workptr_t) == sizeof(uintptr_t), workptr_size);
+STATIC_ASSERT(sizeof(struct actxptr_t) == sizeof(uintptr_t), actxptr_size);
 
 struct appctx_desc_t {
   union {

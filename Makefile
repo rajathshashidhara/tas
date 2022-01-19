@@ -5,10 +5,10 @@
 
 CPPFLAGS += -Iinclude/
 CPPFLAGS += $(EXTRA_CPPFLAGS)
-CFLAGS += -std=gnu99 -O3 -g -Wall -Werror -march=native -fno-omit-frame-pointer
+CFLAGS += -std=gnu99 -O3 -g3 -Wall -Werror -march=native -fno-omit-frame-pointer
 CFLAGS += $(EXTRA_CFLAGS)
 CFLAGS_SHARED += $(CFLAGS) -fPIC
-LDFLAGS += -pthread -g
+LDFLAGS += -pthread -g3
 LDFLAGS += $(EXTRA_LDFLAGS)
 LDLIBS += -lm -lpthread -lrt -ldl
 LDLIBS += $(EXTRA_LDLIBS)
