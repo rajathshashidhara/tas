@@ -394,10 +394,13 @@ static void flows_seg(struct flextcp_pl_flowst_tcp_t *fs,
   }
 
   if (payload_bytes != 0) {
-    rx_bump = payload_bytes;
     work->dma_pos = fs->rx_next_seq;
     work->dma_len = payload_bytes;
     work->dma_off = trim_start;
+
+    rx_bump = payload_bytes;
+    fs->rx_next_seq += payload_bytes;
+    fs->rx_avail -= payload_bytes;
 
     if (fs->rx_ooo_len != 0) {
       if (tcp_trim_rxbuf(fs, fs->rx_ooo_start, fs->rx_ooo_len, &trim_start, &trim_end) != 0) {
@@ -417,7 +420,6 @@ static void flows_seg(struct flextcp_pl_flowst_tcp_t *fs,
       }
     }
 
-    work->rx_bump = rx_bump;
     flags |= (WORK_FLAG_DMA_PAYLOAD | WORK_FLAG_DMA_ACDESC);
   }
 
