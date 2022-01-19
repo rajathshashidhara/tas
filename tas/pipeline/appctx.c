@@ -130,6 +130,13 @@ static unsigned flush_arx_queues(struct actxptr_t *descptr,
     rte_memcpy(arx_entries[i], desc[i], sizeof(struct flextcp_pl_arx));
   }
 
+  MEM_BARRIER();
+
+  /* Ensure the descriptor is written before making it visible to app */
+  for (i = 0; i < num; i++) {
+    arx_entries[i]->type = FLEXTCP_PL_ARX_CONNUPDATE;
+  }
+
   /* Notify contexts */
   for (i = 0; i < num; i++) {
     actx_id = descptr[i].db_id;

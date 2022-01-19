@@ -25,7 +25,7 @@ extern struct rte_ring *dma_ring;
 extern struct rte_ring *arx_ring;
 extern struct rte_ring *nbi_tx_queues[MAX_NB_TX];
 
-//#define DMA_IOAT
+// #define DMA_IOAT
 
 static unsigned process_completion(uint64_t buf_handles[BATCH_SIZE],
                                    uint64_t desc_handles[BATCH_SIZE],

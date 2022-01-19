@@ -31,6 +31,7 @@ struct rte_ring *nbi_rx_queue;
 struct rte_ring *nbi_tx_queues[NUM_SEQ_CTXS];
 struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
 struct rte_ring *postproc_workqueue;
+struct rte_ring *dma_cmd_ring;
 struct rte_hash *flow_lookup_table;
 struct rte_ring *sp_rx_ring;
 struct rte_ring *sched_tx_queue;
@@ -119,6 +120,15 @@ int pipeline_init()
   postproc_workqueue = rte_ring_create(name, 4 * NUM_FLOWGRPS * RING_SIZE, rte_socket_id(),
             0);   // 4 -> (RX + TX + AC + RETX) * NUM_FLOWGRPS
   if (postproc_workqueue == NULL) {
+    fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+    return -1;
+  }
+
+  /* Init DMA workqueue */
+  snprintf(name, 64, "dma_cmd_ring_");
+  dma_cmd_ring = rte_ring_create(name, 4 * NUM_FLOWGRPS * RING_SIZE, rte_socket_id(),
+            0);   // 4 -> (RX + TX + AC + RETX) * NUM_FLOWGRPS
+  if (dma_cmd_ring == NULL) {
     fprintf(stderr, "%s: %d\n", __func__, __LINE__);
     return -1;
   }

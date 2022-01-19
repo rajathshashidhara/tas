@@ -491,7 +491,7 @@ static unsigned poll_reorder_queue(unsigned flow_grp,
 
   /* Process RX work */
   for (i = 0; i < num; i++) {
-    work = (struct work_t *) RTE_PTR_ADD(BUF_FROM_PTR(workptrs[i]), sizeof(struct rte_mbuf *));
+    work = (struct work_t *) RTE_PTR_ADD(BUF_FROM_PTR(workptrs[i]), sizeof(struct rte_mbuf));
     fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
 
     if (work->len == 0) {
@@ -548,7 +548,7 @@ static unsigned poll_protocol_workqueues(unsigned flow_grp,
       break;
 
     case WORK_TYPE_TX:
-      work = (struct work_t *) RTE_PTR_ADD(BUF_FROM_PTR(workptrs[i]), sizeof(struct rte_mbuf *));
+      work = (struct work_t *) RTE_PTR_ADD(BUF_FROM_PTR(workptrs[i]), sizeof(struct rte_mbuf));
       flows_tx(fs, work, ts);
       work->flags |= WORK_FLAG_RESULT;
       if ((work->flags & WORK_FLAG_TX) == WORK_FLAG_TX) {

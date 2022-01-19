@@ -16,9 +16,10 @@ STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
 
 #define NUM_NBI_CORES               1
 #define NUM_PREPROC_CORES           1
-#define NUM_APPCTX_CORES            1
 #define NUM_PROTOCOL_CORES          1
-#define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_APPCTX_CORES)
+#define NUM_POSTPROC_CORES          1
+#define NUM_APPCTX_CORES            1
+#define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES)
 
 #define BUF_FROM_PTR(WPTR)      ((void *) ((((intptr_t) (WPTR).__rawptr) << 22) >> 16))
 #define BUF_TO_PTR(BUF)       ((((uintptr_t) (BUF)) >> 6) & ((0x1ull << 42) - 1))
@@ -36,6 +37,7 @@ STATIC_ASSERT(RTE_CACHE_LINE_SIZE == 64, cacheline_size);
 
 #define NBI_DIR_RX    0x0         /*> network -> fastpath */
 #define NBI_DIR_TX    0x1         /*> fastpath -> network */
+#define NBI_DIR_FREE  0x2         /*> free packet         */
 
 struct nbi_pkt_t {
   union {
@@ -43,8 +45,8 @@ struct nbi_pkt_t {
       uint64_t mbuf:42;       /*> Packet address      */
       uint64_t seqno:16;      /*> Sequence number     */
       uint64_t seqr:3;        /*> Sequencer context   */
-      uint64_t rsvd:2;        /*> Reserved            */
-      uint64_t dir:1;         /*> NBI_DIR_            */
+      uint64_t rsvd:1;        /*> Reserved            */
+      uint64_t dir:2;         /*> NBI_DIR_            */
     } __attribute__ ((packed));
     void *__rawptr;
   };
@@ -135,6 +137,7 @@ extern struct rte_hash *flow_lookup_table;
 
 int preproc_thread(void *args);
 int protocol_thread(void *args);
+int postproc_thread(void *args);
 
 /******************************************************************/
 
@@ -220,19 +223,21 @@ extern struct rte_ring *sched_tx_queue;
 
 /******************************************************************/
 
+/**
+ * 
+ * DMA engine block.
+ * 
+ */
+
 struct dma_cmd_t {
   union {
     struct {
+      struct nbi_pkt_t buf;
+      struct actxptr_t desc;
+      
       uint16_t len0;
       uint16_t len1;
 
-      uint32_t flow_id;
-      uint16_t flow_grp;
-      uint16_t actx_id;
-
-      struct rte_mbuf *buf;
-      struct appctx_desc_t *desc;
-      
       uintptr_t src_addr0;
       uintptr_t dst_addr0;
 
@@ -245,5 +250,6 @@ struct dma_cmd_t {
 } __attribute__((packed));
 STATIC_ASSERT(sizeof(struct dma_cmd_t) == RTE_CACHE_LINE_SIZE, dma_cmd_size);
 
+extern struct rte_ring *dma_cmd_ring;
 
 #endif /* TAS_PIPELINE_H_ */
