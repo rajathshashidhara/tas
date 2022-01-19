@@ -19,7 +19,8 @@ STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
 #define NUM_PROTOCOL_CORES          1
 #define NUM_POSTPROC_CORES          1
 #define NUM_APPCTX_CORES            1
-#define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES)
+#define NUM_DMA_CORES               1
+#define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES + NUM_DMA_CORES)
 
 #define BUF_FROM_PTR(WPTR)      ((void *) ((((intptr_t) (WPTR).__rawptr) << 22) >> 16))
 #define BUF_TO_PTR(BUF)       ((((uintptr_t) (BUF)) >> 6) & ((0x1ull << 42) - 1))
@@ -55,7 +56,7 @@ STATIC_ASSERT(sizeof(struct nbi_pkt_t) == sizeof(void *), nbipkt_size);
 
 extern uint8_t net_port_id;
 extern struct rte_ring *nbi_rx_queue;
-extern struct rte_ring *nbi_tx_queues[NUM_SEQ_CTXS];
+extern struct rte_ring *nbi_tx_queue;
 
 int nbi_thread(void *args);
 
@@ -253,4 +254,5 @@ STATIC_ASSERT(sizeof(struct dma_cmd_t) == RTE_CACHE_LINE_SIZE, dma_cmd_size);
 
 extern struct rte_ring *dma_cmd_ring;
 
+int dma_thread(void *args);
 #endif /* TAS_PIPELINE_H_ */

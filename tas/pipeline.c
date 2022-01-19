@@ -28,7 +28,7 @@
 #define DESC_SIZE   (RTE_CACHE_LINE_SIZE)
 
 struct rte_ring *nbi_rx_queue;
-struct rte_ring *nbi_tx_queues[NUM_SEQ_CTXS];
+struct rte_ring *nbi_tx_queue;
 struct rte_ring *protocol_workqueues[NUM_FLOWGRPS];
 struct rte_ring *postproc_workqueue;
 struct rte_ring *dma_cmd_ring;
@@ -69,16 +69,14 @@ int pipeline_init()
     return -1;
   }
 
-  /* Init NBI TX queues */
-  for (i = 0; i < NUM_SEQ_CTXS; i++) {
-    snprintf(name, 64, "nbi_tx_%u", i);
-    nbi_tx_queues[i] = rte_ring_create(name, RING_SIZE, rte_socket_id(),
-            RING_F_SC_DEQ);
+  /* Init NBI TX queue */
+  snprintf(name, 64, "nbi_tx_");
+  nbi_tx_queue = rte_ring_create(name, RING_SIZE, rte_socket_id(),
+          RING_F_SC_DEQ);
 
-    if (nbi_tx_queues[i] == NULL) {
-      fprintf(stderr, "%s: %d\n", __func__, __LINE__);
-      return -1;
-    }
+  if (nbi_tx_queue == NULL) {
+    fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+    return -1;
   }
 
   /* Init SP RX queue */

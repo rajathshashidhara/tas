@@ -4,28 +4,16 @@
 #include <rte_memcpy.h>
 #include <rte_ring.h>
 #include <rte_mbuf.h>
-#include <rte_ioat_rawdev.h>
 
 #include "pipeline.h"
 
-#define MAX_NB_TX   NUM_FLOWGRPS
-#define BATCH_SIZE  32
-
-struct userdata {
-  union {
-    struct {
-      uint64_t addr:48;
-      uint64_t id:16;
-    } __attribute__((packed));
-    uint64_t __raw;
-  };
-};
-
-extern struct rte_ring *dma_ring;
-extern struct rte_ring *arx_ring;
-extern struct rte_ring *nbi_tx_queues[MAX_NB_TX];
+#define BATCH_SIZE  16
 
 // #define DMA_IOAT
+
+#ifdef DMA_IOAT
+
+#include <rte_ioat_rawdev.h>
 
 static unsigned process_completion(uint64_t buf_handles[BATCH_SIZE],
                                    uint64_t desc_handles[BATCH_SIZE],
@@ -104,10 +92,8 @@ static unsigned process_completion(uint64_t buf_handles[BATCH_SIZE],
   return num;
 }
 
-#ifdef DMA_IOAT
-
 static int dev_id;
-static unsigned issue_copies(struct dma_cmt_t *cmds[BATCH_SIZE],
+static unsigned issue_copies(struct dma_cmd_t *cmds[BATCH_SIZE],
                                  unsigned num)
 {
   int ret;
@@ -175,32 +161,24 @@ static unsigned issue_copies(struct dma_cmt_t *cmds[BATCH_SIZE],
   return num_copy;
 }
 
-#else
+#endif
 
-static unsigned issue_copies(struct dma_cmt_t *cmds[BATCH_SIZE],
-                                 unsigned num)
+static unsigned issue_copies(struct dma_cmd_t **cmds,
+                             unsigned num)
 {
-  int ret;
-  unsigned i, num_copy, num_cmpl;
-  struct userdata data0, data1;
-  uint64_t buf_handles[BATCH_SIZE], desc_handles[BATCH_SIZE];
+  unsigned i, num_copy;
 
-  num_cmpl = num_copy = 0;
-
-  /* Prefetch DMA commands */
-  for (i = 0; i < num; i++) {
-    rte_prefetch0(cmds[i]);
-  }
+  num_copy = 0;
 
   /* Perform copies */
   for (i = 0; i < num; i++) {
     if (cmds[i]->len1 > 0) {
-      rte_memcpy(cmds[i]->dst_addr1, cmds[i]->src_addr1, cmds[i]->len1);
+      rte_memcpy((void *) cmds[i]->dst_addr1, (void *) cmds[i]->src_addr1, cmds[i]->len1);
       num_copy++;
     }
 
     if (cmds[i]->len0 > 0) {
-      rte_memcpy(cmds[i]->dst_addr0, cmds[i]->src_addr0, cmds[i]->len0);
+      rte_memcpy((void *) cmds[i]->dst_addr0, (void *) cmds[i]->src_addr0, cmds[i]->len0);
       num_copy++;
     }
   }
@@ -208,4 +186,65 @@ static unsigned issue_copies(struct dma_cmt_t *cmds[BATCH_SIZE],
   return num_copy;
 }
 
-#endif
+static unsigned process_completion(struct dma_cmd_t **cmds,
+                                   unsigned num)
+{
+  unsigned i, m;
+
+  struct nbi_pkt_t tx_pkts[BATCH_SIZE];
+  struct actxptr_t arx_descs[BATCH_SIZE];
+  unsigned num_desc;
+
+  num_desc = 0;
+
+  for (i = 0; i < num; i++) {
+    tx_pkts[i] = cmds[i]->buf;
+
+    if (cmds[i]->desc.__rawptr != 0) {
+      arx_descs[num_desc++] = cmds[i]->desc;
+    }
+  }
+
+  /* Send packets to NBI */
+  m = rte_ring_mp_enqueue_burst(nbi_tx_queue, (void **) tx_pkts, num, NULL);
+  if (m < num) {
+    /* Free untransmitted segments */
+    rte_pktmbuf_free_seg((struct rte_mbuf *) BUF_FROM_PTR(tx_pkts[i]));
+  }
+
+  /* Send descriptors to ACTX */
+  m = rte_ring_mp_enqueue_burst(arx_ring, (void **) arx_descs, num_desc, NULL);
+  if (m < num_desc) {
+    /* TODO: How to handle this? */
+    fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+    abort();
+  }
+
+  return num;
+}
+
+int dma_thread(void *args)
+{
+  unsigned i, num;
+  struct workptr_t wptrs[BATCH_SIZE];
+  struct dma_cmd_t *cmds[BATCH_SIZE];
+
+  (void) args;
+
+  while (1) {
+    num = rte_ring_mc_dequeue_burst(dma_cmd_ring, (void **) wptrs, BATCH_SIZE, NULL);
+    if (num == 0)
+      continue;
+
+    /* Prefetch */
+    for (i = 0; i < num; i++) {
+      cmds[i] = (struct dma_cmd_t *) BUF_FROM_PTR(wptrs[i]);
+      rte_prefetch0(cmds[i]);
+    }
+
+    issue_copies(cmds, num);
+    process_completion(cmds, num);
+  }
+
+  return EXIT_SUCCESS;
+}

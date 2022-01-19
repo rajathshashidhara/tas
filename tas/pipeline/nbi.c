@@ -49,7 +49,7 @@ static unsigned poll_rx(uint16_t rxq)
   return n;
 }
 
-static unsigned poll_tx(uint16_t txq)
+static unsigned poll_tx()
 {
   unsigned n, m, i;
   uint16_t seqr, seq;
@@ -58,7 +58,7 @@ static unsigned poll_tx(uint16_t txq)
   struct rte_mbuf *free_pkts[BATCH_SIZE];
 
   /* Poll for TX packets */
-  n = rte_ring_sc_dequeue_burst(nbi_tx_queues[txq], (void **) nbi_pkts, BATCH_SIZE, NULL);
+  n = rte_ring_sc_dequeue_burst(nbi_tx_queue, (void **) nbi_pkts, BATCH_SIZE, NULL);
 
   if (n == 0)
     return 0;
@@ -74,8 +74,15 @@ static unsigned poll_tx(uint16_t txq)
   for (i = 0, m = 0; i < n; i++) {
     seq = nbi_pkts[i].seqno;
     seqr = nbi_pkts[i].seqr;
-    if (utils_reorder_insert(tx_sequencers[seqr], tx_pkts[i], seq) != 0) {
+
+    if (nbi_pkts[i].dir == NBI_DIR_FREE) {
+      utils_reorder_insert(tx_sequencers[seqr], NULL, seq);
       free_pkts[m++] = tx_pkts[i];
+    }
+    else {
+      if (utils_reorder_insert(tx_sequencers[seqr], tx_pkts[i], seq) != 0) {
+        free_pkts[m++] = tx_pkts[i];
+      }
     }
   }
 
@@ -89,7 +96,7 @@ static unsigned poll_tx(uint16_t txq)
 
 static unsigned poll_sequencers(uint16_t txq)
 {
-  unsigned n, m, i;
+  unsigned n, k, m, i;
   struct rte_mbuf *tx_pkts[BATCH_SIZE];
 
   /* Poll for ordered packets */
@@ -98,10 +105,18 @@ static unsigned poll_sequencers(uint16_t txq)
   if (n == 0)
     return 0;
 
-  m = rte_eth_tx_burst(net_port_id, txq, tx_pkts, n);
+  /* Remove NULL entries */
+  for (i = 0, k = 0; i < n; i++) {
+    if (tx_pkts[i] == NULL)
+      continue;
+    
+    tx_pkts[k++] = tx_pkts[i];
+  }
+
+  m = rte_eth_tx_burst(net_port_id, txq, tx_pkts, k);
 
   /* Free untransmitted packets */
-  for (i = m; i < n; i++) {
+  for (i = m; i < k; i++) {
     rte_pktmbuf_free_seg(tx_pkts[i]);    // NOTE: We do not handle chained mbufs for efficiency!
   }
 
@@ -139,7 +154,7 @@ int nbi_thread(void *args)
 
     for (q = 0; q < NUM_SEQ_CTXS; q++) {
       poll_rx(q);
-      poll_tx(q);
+      poll_tx();
       poll_sequencers(q);
     }    
   }
