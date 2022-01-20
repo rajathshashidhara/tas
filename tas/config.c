@@ -33,6 +33,7 @@
 #include <utils.h>
 
 #include <config.h>
+#include <rte_common.h>
 
 enum cfg_params {
   CP_SHM_LEN,
@@ -308,11 +309,19 @@ int config_parse(struct configuration *c, int argc, char *argv[])
           fprintf(stderr, "tcp rxbuf len parsing failed\n");
           goto failed;
         }
+        if (!rte_is_power_of_2(c->tcp_rxbuf_len)) {
+          fprintf(stderr, "tcp rxbuf len parsing failed\n");
+          goto failed;          
+        }
         break;
       case CP_TCP_TXBUF_LEN:
         if (parse_int64(optarg, &c->tcp_txbuf_len) != 0) {
           fprintf(stderr, "tcp txbuf len parsing failed\n");
           goto failed;
+        }
+        if (!rte_is_power_of_2(c->tcp_txbuf_len)) {
+          fprintf(stderr, "tcp rxbuf len parsing failed\n");
+          goto failed;          
         }
         break;
       case CP_TCP_HANDSHAKE_TO:

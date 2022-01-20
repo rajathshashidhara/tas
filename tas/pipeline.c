@@ -35,6 +35,7 @@ struct rte_ring *dma_cmd_ring;
 struct rte_hash *flow_lookup_table;
 struct rte_ring *sp_rx_ring;
 struct rte_ring *sched_tx_queue;
+struct rte_ring *sched_bump_queue;
 struct rte_ring *atx_ring;
 struct rte_ring *arx_ring;
 struct rte_mempool *arx_desc_pool;
@@ -137,6 +138,15 @@ int pipeline_init()
           RING_F_SP_ENQ);
   
   if (sched_tx_queue == NULL) {
+    fprintf(stderr, "%s: %d\n", __func__, __LINE__);
+    return -1;
+  }
+
+  snprintf(name, 64, "sched_bump_");
+  sched_bump_queue = rte_ring_create(name, NUM_SEQ_CTXS * RING_SIZE, rte_socket_id(),
+          RING_F_SC_DEQ);
+  
+  if (sched_bump_queue == NULL) {
     fprintf(stderr, "%s: %d\n", __func__, __LINE__);
     return -1;
   }

@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <rte_config.h>
+#include <rte_common.h>
 #include <rte_ip.h>
 #include <rte_hash_crc.h>
 
@@ -640,6 +641,9 @@ static inline struct connection *conn_alloc(void)
     fprintf(stderr, "conn_alloc: malloc failed\n");
     return NULL;
   }
+
+  assert(rte_is_power_of_2(config.tcp_rxbuf_len));
+  assert(rte_is_power_of_2(config.tcp_txbuf_len));
 
   if (packetmem_alloc(config.tcp_rxbuf_len, &off_rx, &conn->rx_handle) != 0) {
     fprintf(stderr, "conn_alloc: packetmem_alloc rx failed\n");

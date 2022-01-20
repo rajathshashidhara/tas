@@ -185,6 +185,9 @@ static int common_thread(void *arg)
   else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES + NUM_DMA_CORES)) {
     dma_thread(NULL);
   }
+  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES + NUM_DMA_CORES + NUM_SCHED_CORES)) {
+    scheduler_thread(NULL);
+  }
 
   return EXIT_SUCCESS;
 }

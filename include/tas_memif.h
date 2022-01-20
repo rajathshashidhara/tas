@@ -316,8 +316,9 @@ struct flextcp_pl_flowst_tcp_t {
 struct flextcp_pl_flowst_cc_t {
   union {
     struct {
-      uint32_t tx_avail;
       uint32_t tx_rate;
+      uint32_t tx_avail;
+
       uint32_t rtt_est;
       uint32_t txp;
       uint32_t cnt_tx_drops;
@@ -326,9 +327,9 @@ struct flextcp_pl_flowst_cc_t {
       uint32_t cnt_rx_ecn_bytes;
     } __attribute__((packed));
 
-    uint32_t rsvd[16];
+    uint32_t rsvd[8];
   };
-} __attribute__((packed, aligned(64)));
+} __attribute__((packed, aligned(32)));
 
 /** Flow state registers */
 struct flextcp_pl_flowst {
@@ -441,12 +442,7 @@ struct flextcp_pl_mem {
   struct flextcp_pl_flowst_tcp_t    flows_tcp_state[FLEXNIC_PL_FLOWST_NUM];
   struct flextcp_pl_flowst_conn_t   flows_conn_info[FLEXNIC_PL_FLOWST_NUM];
   struct flextcp_pl_flowst_mem_t    flows_mem_info[FLEXNIC_PL_FLOWST_NUM];
-  // struct flextcp_pl_flowst_cc_t     flows_cc_info[FLEXNIC_PL_FLOWST_NUM];
-
-  struct flextcp_pl_flowst flowst[FLEXNIC_PL_FLOWST_NUM];
-
-  /* flow lookup table */
-  struct flextcp_pl_flowhte flowht[FLEXNIC_PL_FLOWHT_ENTRIES];
+  struct flextcp_pl_flowst_cc_t     flows_cc_info[FLEXNIC_PL_FLOWST_NUM];
 
   /* registers for kernel queues */
   struct flextcp_pl_appctx kctx[FLEXNIC_PL_APPST_CTX_MCS];

@@ -298,6 +298,7 @@ static unsigned preprocess_tx(struct preproc_ctx *ctx, unsigned max_num)
   
   for (i = 0; i < num_tx; i++) {
     /* Prepare work descriptor */
+    tx[i].flow_grp = conns[i]->flow_grp; // FIXME
     prepare_tx_work(ctx, pkts[i], tx[i]);
 
     /* Prepare segment header */

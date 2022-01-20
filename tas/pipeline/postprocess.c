@@ -29,8 +29,25 @@ struct postproc_ctx {
 
   struct workptr_t dma_wptrs[BATCH_SIZE];
   unsigned num_dma;
+
+  struct sched_bump_t qm_bumps[BATCH_SIZE];
+  unsigned num_qm;
 };
 
+static void postprocess_retx(struct postproc_ctx *ctx,
+                           struct workptr_t wptr)
+{
+  uint32_t bump = (uint32_t) wptr.addr;
+
+  /* Process qm bump */
+  if (bump > 0) {
+    ctx->qm_bumps[ctx->num_qm].__raw = NULL;
+    ctx->qm_bumps[ctx->num_qm].flow_id = wptr.flow_id;
+    ctx->qm_bumps[ctx->num_qm].flow_grp = wptr.flow_grp;
+    ctx->qm_bumps[ctx->num_qm].bump = bump;
+    ctx->num_qm++;
+  }
+}
 
 static void postprocess_ac(struct postproc_ctx *ctx,
                            struct workptr_t wptr)
@@ -39,6 +56,15 @@ static void postprocess_ac(struct postproc_ctx *ctx,
 
   /* Free AC descriptor */
   ctx->tx_descs[ctx->tx_desc_freed++] = (struct appctx_desc_t *) work;
+
+  /* Process qm bump */
+  if (work->qm_bump > 0) {
+    ctx->qm_bumps[ctx->num_qm].__raw = NULL;
+    ctx->qm_bumps[ctx->num_qm].flow_id = wptr.flow_id;
+    ctx->qm_bumps[ctx->num_qm].flow_grp = wptr.flow_grp;
+    ctx->qm_bumps[ctx->num_qm].bump = work->qm_bump;
+    ctx->num_qm++;
+  }
 }
 
 static inline void tcp_checksums(struct rte_mbuf *mb, struct pkt_tcp_ts *p)
@@ -95,6 +121,7 @@ static void prepare_tx_dma_descriptor(
   mb = (struct rte_mbuf *) work->mbuf;
   memset(&cmd, 0, sizeof(struct dma_cmd_t));
 
+  work->dma_pos = work->dma_pos & (conn->tx_len - 1);
   if (likely(work->dma_pos + work->dma_len <= conn->tx_len)) {
     cmd.len0 = work->dma_len;
     cmd.src_addr0 = (uintptr_t) dma_pointer(conn->tx_base + work->dma_pos, work->dma_len);
@@ -132,6 +159,7 @@ static void prepare_rx_dma_descriptor(struct work_t *work,
   mb = (struct rte_mbuf *) work->mbuf;
   memset(&cmd, 0, sizeof(struct dma_cmd_t));
 
+  work->dma_pos = work->dma_pos & (conn->rx_len - 1);
   if (likely(work->dma_pos + work->dma_len <= conn->rx_len)) {
     cmd.len0 = work->dma_len;
     cmd.dst_addr0 = (uintptr_t) dma_pointer(conn->rx_base + work->dma_pos, work->dma_len);
@@ -176,6 +204,15 @@ static void postprocess_tx(struct postproc_ctx *ctx,
 
   /* Forward to DMA engine */
   ctx->dma_wptrs[ctx->num_dma++] = wptr;
+
+  /* Process qm bump */
+  if (work->qm_bump > 0) {
+    ctx->qm_bumps[ctx->num_qm].__raw = NULL;
+    ctx->qm_bumps[ctx->num_qm].flow_id = wptr.flow_id;
+    ctx->qm_bumps[ctx->num_qm].flow_grp = wptr.flow_grp;
+    ctx->qm_bumps[ctx->num_qm].bump = work->qm_bump;
+    ctx->num_qm++;
+  }
 }
 
 static struct actxptr_t prepare_arx_desc(struct work_t *work,
@@ -226,6 +263,15 @@ static void postprocess_rx(struct postproc_ctx *ctx,
 
   /* Forward to DMA engine */
   ctx->dma_wptrs[ctx->num_dma++] = wptr;
+
+  /* Process qm bump */
+  if (work->qm_bump > 0) {
+    ctx->qm_bumps[ctx->num_qm].__raw = NULL;
+    ctx->qm_bumps[ctx->num_qm].flow_id = wptr.flow_id;
+    ctx->qm_bumps[ctx->num_qm].flow_grp = wptr.flow_grp;
+    ctx->qm_bumps[ctx->num_qm].bump = work->qm_bump;
+    ctx->num_qm++;
+  }
 }
 
 static void postproc_thread_init(struct postproc_thread_conf *conf)
@@ -263,6 +309,10 @@ static void prefetch_buffers(struct workptr_t wptr)
     rte_prefetch0(conn);
     break;
   
+  case WORK_TYPE_RETX:
+    // TODO: ?
+    break;
+  
   default:
     fprintf(stderr, "%s:%d\n", __func__, __LINE__);
     abort();
@@ -282,6 +332,10 @@ static void postprocess(struct postproc_ctx *ctx, struct workptr_t wptr)
   
   case WORK_TYPE_AC:
     postprocess_ac(ctx, wptr);
+    break;
+  
+  case WORK_TYPE_RETX:
+    postprocess_retx(ctx, wptr);
     break;
   
   default:
@@ -335,6 +389,7 @@ int postproc_thread(void *args)
     ctx.rx_desc_used = 0;
     ctx.tx_desc_freed = 0;
     ctx.num_dma = 0;
+    ctx.num_qm = 0;
     for (i = 0; i < num; i++) {
       postprocess(&ctx, wptr[i]);
     }
@@ -348,6 +403,14 @@ int postproc_thread(void *args)
     if (ctx.num_dma > 0) {
       num_enq = rte_ring_mp_enqueue_burst(dma_cmd_ring, (void **) ctx.dma_wptrs, ctx.num_dma, NULL);
       if (num_enq < ctx.num_dma) {
+        fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+        abort();
+      }
+    }
+
+    if (ctx.num_qm > 0) {
+      num_enq = rte_ring_mp_enqueue_burst(sched_bump_queue, (void **) ctx.qm_bumps, ctx.num_qm, NULL);
+      if (num_enq < ctx.num_qm) {
         fprintf(stderr, "%s:%d\n", __func__, __LINE__);
         abort();
       }

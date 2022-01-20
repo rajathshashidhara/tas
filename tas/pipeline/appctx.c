@@ -92,6 +92,9 @@ static unsigned flush_arx_queues(struct actxptr_t *descptr,
   struct flextcp_pl_arx *arx_entries[BATCH_SIZE];
   struct appctx_desc_t *desc[BATCH_SIZE];
 
+  if (num == 0)
+    return 0;
+
   /* Prefetch the descriptors */
   for (i = 0; i < num; i++) {
     rte_prefetch0(desc[i]);

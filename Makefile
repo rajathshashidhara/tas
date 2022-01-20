@@ -72,15 +72,14 @@ include $(dir)/rules.mk
 dir := tas
 include $(dir)/rules.mk
 
-dir := tools
-include $(dir)/rules.mk
+# dir := tools
+# include $(dir)/rules.mk
 
-dir := tests
-include $(dir)/rules.mk
+# dir := tests
+# include $(dir)/rules.mk
 
-dir := doc
-include $(dir)/rules.mk
-
+# dir := doc
+# include $(dir)/rules.mk
 
 ##############################################################################
 # Top level targets

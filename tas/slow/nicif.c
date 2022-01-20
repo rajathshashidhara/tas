@@ -68,6 +68,8 @@ static inline void process_packet(const void *buf, uint16_t len,
     uint32_t fn_core, uint16_t flow_group);
 static inline volatile struct flextcp_pl_ktx *ktx_try_alloc(uint32_t core,
     struct nic_buffer **buf, uint32_t *new_tail);
+
+#if 0
 static inline uint32_t flow_hash(ip_addr_t lip, beui16_t lp,
     ip_addr_t rip, beui16_t rp);
 static inline int flow_slot_alloc(uint32_t h, uint32_t *i, uint32_t *d);
@@ -76,9 +78,9 @@ static inline int flow_slot_clear(uint32_t f_id, ip_addr_t lip, beui16_t lp,
 static void flow_id_alloc_init(void);
 static int flow_id_alloc(uint32_t *fid) __rte_unused;
 static void flow_id_free(uint32_t flow_id) __rte_unused;
-
 struct flow_id_item flow_id_items[FLEXNIC_PL_FLOWST_NUM];
 struct flow_id_item *flow_id_freelist;
+#endif
 
 static uint32_t fn_cores;
 
@@ -110,8 +112,10 @@ int nicif_init(void)
     return -1;
   }
 
+#if 0
   /* prepare flow_id allocator */
   flow_id_alloc_init();
+#endif
 
   if (adminq_init()) {
     fprintf(stderr, "nicif_init: initializing admin queue failed\n");
@@ -200,6 +204,7 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
   struct flextcp_pl_flowst_conn_t *fs_conn;
   struct flextcp_pl_flowst_tcp_t  *fs_tcp;
   struct flextcp_pl_flowst_mem_t  *fs_mem;
+  struct flextcp_pl_flowst_cc_t   *fs_cc;
   beui32_t lip = t_beui32(ip_local), rip = t_beui32(ip_remote);
   beui16_t lp = t_beui16(port_local), rp = t_beui16(port_remote);
   int32_t f_id;
@@ -264,6 +269,11 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
   fs_tcp->rtt_est = 0;
   fs_tcp->qm_avail = 0;
   fs_tcp->tx_rate = rate;
+
+  fs_cc = &fp_state->flows_cc_info[f_id];
+  memset(fs_cc, 0, sizeof(*fs_cc));
+  fs_cc->tx_avail = 0;
+  fs_cc->tx_rate = rate;
 
   *pf_id = f_id;
   return 0;
@@ -611,6 +621,7 @@ static inline volatile struct flextcp_pl_ktx *ktx_try_alloc(uint32_t core,
   return ktx;
 }
 
+#if 0
 static inline uint32_t flow_hash(ip_addr_t lip, beui16_t lp,
     ip_addr_t rip, beui16_t rp)
 {
@@ -777,3 +788,4 @@ static void flow_id_free(uint32_t flow_id)
   it->next = flow_id_freelist;
   flow_id_freelist = it;
 }
+#endif
