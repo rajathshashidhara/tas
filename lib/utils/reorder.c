@@ -91,7 +91,7 @@ int
 utils_reorder_insert(
       struct utils_reorder_buffer *b, void *buf, uint16_t seq)
 {
-	uint32_t offset, position;
+	uint16_t offset, position;
 	struct cir_buffer *order_buf;
 
 	if (b == NULL || buf == NULL) {

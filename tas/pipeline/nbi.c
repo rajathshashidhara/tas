@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <rte_config.h>
 #include <rte_atomic.h>
 #include <rte_lcore.h>
@@ -76,7 +77,6 @@ static unsigned poll_tx()
     seqr = nbi_pkts[i].seqr;
 
     if (nbi_pkts[i].dir == NBI_DIR_FREE) {
-      utils_reorder_insert(tx_sequencers[seqr], NULL, seq);
       free_pkts[m++] = tx_pkts[i];
     }
     else {
@@ -112,6 +112,9 @@ static unsigned poll_sequencers(uint16_t txq)
     
     tx_pkts[k++] = tx_pkts[i];
   }
+
+  if (k == 0)
+    return n;
 
   m = rte_eth_tx_burst(net_port_id, txq, tx_pkts, k);
 
