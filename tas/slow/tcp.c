@@ -637,7 +637,7 @@ static inline struct connection *conn_alloc(void)
   struct connection *conn;
   uintptr_t off_rx, off_tx;
 
-  if ((conn = malloc(sizeof(*conn))) == NULL) {
+  if ((conn = calloc(1, sizeof(*conn))) == NULL) {
     fprintf(stderr, "conn_alloc: malloc failed\n");
     return NULL;
   }

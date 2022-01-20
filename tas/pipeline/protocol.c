@@ -214,6 +214,7 @@ static void flows_ack(struct flextcp_pl_flowst_tcp_t *fs,
   uint32_t old_avail, new_avail;
   uint32_t tx_bump;
   uint32_t rtt;
+  uint64_t rtt_ewma;
 
   flags = 0;
   tx_bump = 0;
@@ -265,7 +266,9 @@ static void flows_ack(struct flextcp_pl_flowst_tcp_t *fs,
   if (work->ts_ecr != 0) {
     rtt = ts - work->ts_ecr;
     if (rtt < TCP_MAX_RTT) {
-      fs->rtt_est = (((fs->rtt_est << 8) - fs->rtt_est) + rtt) >> 3;        //= (fs->rtt_est * 7 + rtt) / 8
+      rtt_ewma = fs->rtt_est;
+      rtt_ewma = (((rtt_ewma << 3) - rtt_ewma) + rtt) >> 3;
+      fs->rtt_est = (uint32_t) rtt_ewma;        //= (fs->rtt_est * 7 + rtt) / 8
     }
   }
 
@@ -309,6 +312,7 @@ static void flows_seg(struct flextcp_pl_flowst_tcp_t *fs,
   uint32_t trim_start, trim_end;
   uint32_t seq;
   uint32_t rtt;
+  uint64_t rtt_ewma;
 
   tx_bump = rx_bump = 0;
 #ifdef SKIP_ACK
@@ -431,7 +435,9 @@ static void flows_seg(struct flextcp_pl_flowst_tcp_t *fs,
   if (work->ts_ecr != 0) {
     rtt = ts - work->ts_ecr;
     if (rtt < TCP_MAX_RTT) {
-      fs->rtt_est = (((fs->rtt_est << 8) - fs->rtt_est) + rtt) >> 3;        //= (fs->rtt_est * 7 + rtt) / 8
+      rtt_ewma = fs->rtt_est;
+      rtt_ewma = (((rtt_ewma << 3) - rtt_ewma) + rtt) >> 3;
+      fs->rtt_est = (uint32_t) rtt_ewma;        //= (fs->rtt_est * 7 + rtt) / 8
     }
   }
 
