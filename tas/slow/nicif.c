@@ -224,10 +224,6 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
     return -1;    
   }
 
-  if ((flags & NICIF_CONN_ECN) == NICIF_CONN_ECN) {
-    rx_base |= FLEXNIC_PL_FLOWST_ECN;
-  }
-
   fs_conn = &fp_state->flows_conn_info[f_id];
   fs_conn->flow_id = f_id;
   fs_conn->flow_grp = flow_group;

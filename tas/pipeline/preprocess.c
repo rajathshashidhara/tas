@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <rte_config.h>
 #include <rte_ring.h>
 #include <rte_mbuf.h>
@@ -327,7 +328,7 @@ static void prepare_ac_work(struct preproc_ctx *ctx, struct actxptr_t dptr)
 
   rte_memcpy(desc, &w, sizeof(struct work_t));
 
-  fgp = w.flow_id;
+  fgp = w.flow_grp;
   idx = ctx->num_proc[fgp];
   
   ctx->proc_work[fgp][idx].__rawptr = 0;

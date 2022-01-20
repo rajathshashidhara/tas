@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <rte_config.h>
 #include <rte_branch_prediction.h>
 #include <rte_cycles.h>
@@ -16,7 +17,9 @@
 #define TCP_MAX_RTT 100000
 
 #define REORDER_BUFFER_SIZE   128
-#define BATCH_SIZE 32
+#define BATCH_SIZE 16
+
+#define INVALID_PTR   ((void *) -1)
 
 struct utils_reorder_buffer *rx_sequencer[NUM_FLOWGRPS];
 uint16_t protocol_seqno[NUM_FLOWGRPS];
@@ -488,7 +491,7 @@ static unsigned poll_reorder_queue(unsigned flow_grp,
 
   /* Prefetch flowstate */
   for (i = 0; i < num; i++) {
-    if (workptrs[i].__rawptr == 0)
+    if (workptrs[i].__rawptr == ((uintptr_t) INVALID_PTR))
       continue;
     fs = &fp_state->flows_tcp_state[workptrs[i].flow_id];
     rte_prefetch0(fs);
@@ -497,7 +500,7 @@ static unsigned poll_reorder_queue(unsigned flow_grp,
   /* Process RX work */
   k = 0;
   for (i = 0; i < num; i++) {
-    if (workptrs[i].__rawptr == 0)
+    if (workptrs[i].__rawptr == ((uintptr_t) INVALID_PTR))
       continue;
 
     work = (struct work_t *) BUF_FROM_PTR(workptrs[i]);
@@ -556,12 +559,12 @@ static unsigned poll_protocol_workqueues(unsigned flow_grp,
     case WORK_TYPE_RX:
       if (workptrs[i].flow_id != INVALID_FLOWID) {
         if (utils_reorder_insert(rx_sequencer[flow_grp], (void *) workptrs[i].__rawptr, work->reorder_seqn) != 0) {
-          results[num_enq++] = workptrs[i];   /* Add to free */      
+          results[num_enq++] = workptrs[i];   /* Add to free */
         }
       }
       else {
         /* Insert seqn number for skip */
-        utils_reorder_insert(rx_sequencer[flow_grp], NULL, workptrs[i].addr);
+        utils_reorder_insert(rx_sequencer[flow_grp], INVALID_PTR, workptrs[i].addr);
       }
       break;
 
@@ -628,6 +631,9 @@ int protocol_thread(void *args)
 
       num += poll_reorder_queue(fgp, result, BATCH_SIZE, ts);
       num += poll_protocol_workqueues(fgp, &result[num], BATCH_SIZE - num, ts);
+
+      if (num == 0)
+        continue;
 
       num_enq = rte_ring_sp_enqueue_burst(postproc_workqueue, (void **) result, num, NULL);
       if (num < num_enq) {

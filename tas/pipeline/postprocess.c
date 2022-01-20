@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <rte_config.h>
 #include <rte_branch_prediction.h>
 #include <rte_ring.h>
@@ -193,6 +194,7 @@ static void postprocess_tx(struct postproc_ctx *ctx,
   struct rte_mbuf *mb = (struct rte_mbuf *) work->mbuf;
   struct flextcp_pl_flowst_mem_t *conn = &fp_state->flows_mem_info[wptr.flow_id];
   struct pkt_tcp_ts *pkt = rte_pktmbuf_mtod(mb, struct pkt_tcp_ts *);
+  uint32_t bump;
 
   /* Prepare TCP header */
   if (work->flags & WORK_FLAG_TX) {
@@ -200,17 +202,18 @@ static void postprocess_tx(struct postproc_ctx *ctx,
   }
 
   /* Prepare DMA descriptor */
+  bump = work->qm_bump;
   prepare_tx_dma_descriptor(work, conn);
 
   /* Forward to DMA engine */
   ctx->dma_wptrs[ctx->num_dma++] = wptr;
 
   /* Process qm bump */
-  if (work->qm_bump > 0) {
+  if (bump > 0) {
     ctx->qm_bumps[ctx->num_qm].__raw = NULL;
     ctx->qm_bumps[ctx->num_qm].flow_id = wptr.flow_id;
     ctx->qm_bumps[ctx->num_qm].flow_grp = wptr.flow_grp;
-    ctx->qm_bumps[ctx->num_qm].bump = work->qm_bump;
+    ctx->qm_bumps[ctx->num_qm].bump = bump;
     ctx->num_qm++;
   }
 }
@@ -245,6 +248,7 @@ static void postprocess_rx(struct postproc_ctx *ctx,
   struct flextcp_pl_flowst_mem_t *conn = &fp_state->flows_mem_info[wptr.flow_id];
   struct pkt_tcp_ts *pkt = rte_pktmbuf_mtod(mb, struct pkt_tcp_ts *);
   struct actxptr_t descptr;
+  uint32_t bump;
 
   descptr.__rawptr = 0;
 
@@ -259,17 +263,18 @@ static void postprocess_rx(struct postproc_ctx *ctx,
   }
 
   /* Prepare DMA descriptor */
+  bump = work->qm_bump;
   prepare_rx_dma_descriptor(work, conn, descptr);
 
   /* Forward to DMA engine */
   ctx->dma_wptrs[ctx->num_dma++] = wptr;
 
   /* Process qm bump */
-  if (work->qm_bump > 0) {
+  if (bump > 0) {
     ctx->qm_bumps[ctx->num_qm].__raw = NULL;
     ctx->qm_bumps[ctx->num_qm].flow_id = wptr.flow_id;
     ctx->qm_bumps[ctx->num_qm].flow_grp = wptr.flow_grp;
-    ctx->qm_bumps[ctx->num_qm].bump = work->qm_bump;
+    ctx->qm_bumps[ctx->num_qm].bump = bump;
     ctx->num_qm++;
   }
 }
