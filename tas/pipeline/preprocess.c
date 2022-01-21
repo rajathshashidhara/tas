@@ -287,8 +287,10 @@ static unsigned preprocess_tx(struct preproc_ctx *ctx, unsigned max_num)
   }
 
   /* Allocate mbufs */
-  if (rte_pktmbuf_alloc_bulk(tx_pkt_mempool, pkts, num_tx) != 0)
+  if (rte_pktmbuf_alloc_bulk(tx_pkt_mempool, pkts, num_tx) != 0) {
+    DEBUG();
     return 0; // FIXME: we discard the scheduled entries here!
+  }
 
   /* Prefetch mbufs */
   for (i = 0; i < num_tx; i++) {
@@ -370,13 +372,14 @@ void preproc_thread_init(struct preproc_thread_conf *conf) {
 }
 
 int preproc_thread(void *args) {
-  unsigned q, n, x, y, z;
+  unsigned q, n, x;
   struct preproc_thread_conf *conf = (struct preproc_thread_conf *) args;
   struct preproc_ctx ctx;
 
   preproc_thread_init(conf);
   dataplane_stats_coreinit(PREPROC_CORE_ID);
 
+  n = 0;
   while (1) {
     /* Reset CTX */
     ctx.num_sp = 0;
@@ -384,46 +387,32 @@ int preproc_thread(void *args) {
       ctx.num_proc[q] = 0;
     }
 
+    dataplane_stats_record(PREPROC_CORE_ID, n);
     n = 0;
-    x = preprocess_rx(&ctx, BATCH_SIZE);
-    n += x;
-
-    dataplane_stats_record(PREPROC_CORE_ID, x);
-
-    y = preprocess_tx(&ctx, BATCH_SIZE - n);
-    n += y;
-
-    dataplane_stats_record(PREPROC_CORE_ID, y);
-
-    z = preprocess_ac(&ctx, BATCH_SIZE - n);
-    n += z;
-
-    dataplane_stats_record(PREPROC_CORE_ID, z);
+    n += preprocess_rx(&ctx, BATCH_SIZE);
+    n += preprocess_tx(&ctx, BATCH_SIZE - n);
+    n += preprocess_ac(&ctx, BATCH_SIZE - n);
 
     if (n == 0)
       continue;
 
     /* Push descriptors out to protocol workqueues */
-    n = 0;
     for (q = 0; q < NUM_FLOWGRPS; q++) {
       if (ctx.num_proc[q] == 0)
         continue;
 
-      n += rte_ring_mp_enqueue_burst(protocol_workqueues[q], (void **) ctx.proc_work[q], ctx.num_proc[q], NULL);
-      if (n < ctx.num_proc[q]) {
-        // TODO: ?
-        fprintf(stderr, "%s:%d\n", __func__, __LINE__); 
+      x = rte_ring_mp_enqueue_burst(protocol_workqueues[q], (void **) ctx.proc_work[q], ctx.num_proc[q], NULL);
+      if (x < ctx.num_proc[q]) {
+        DEBUG();
       }
     }
 
     if (ctx.num_sp > 0) {
-      n += rte_ring_mp_enqueue_burst(sp_rx_ring, (void **) ctx.sp_work, ctx.num_sp, NULL);
-      if (n < ctx.num_sp) {
-        // TODO: ?
-        fprintf(stderr, "%s:%d\n", __func__, __LINE__); 
+      x = rte_ring_mp_enqueue_burst(sp_rx_ring, (void **) ctx.sp_work, ctx.num_sp, NULL);
+      if (x < ctx.num_sp) {
+        DEBUG();
       }
     }
-    dataplane_stats_record(PREPROC_CORE_ID, n);
   }
 
   return EXIT_SUCCESS;

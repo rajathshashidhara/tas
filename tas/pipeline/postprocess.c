@@ -319,7 +319,7 @@ static void prefetch_buffers(struct workptr_t wptr)
     break;
   
   default:
-    fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+    DEBUG();
     abort();
   }
 }
@@ -344,7 +344,7 @@ static void postprocess(struct postproc_ctx *ctx, struct workptr_t wptr)
     break;
   
   default:
-    fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+    DEBUG();
     abort();
   }
 }
@@ -371,20 +371,21 @@ int postproc_thread(void *args)
   dataplane_stats_coreinit(POSTPROC_CORE_ID);
 
   memset(&ctx, 0, sizeof(struct postproc_ctx));
+  num = 0;
 
   while (1) {
     /* Replenish ARX descriptors */
     if (ctx.rx_desc_avail < BATCH_SIZE) {
       ret = rte_mempool_get_bulk(arx_desc_pool, (void **) &ctx.rx_descs[ctx.rx_desc_avail], BATCH_SIZE - ctx.rx_desc_avail);
       if (ret < 0) {
-        fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+        DEBUG();
         abort();
       }
       ctx.rx_desc_avail = BATCH_SIZE;
     }
 
-    num = rte_ring_mc_dequeue_burst(postproc_workqueue, (void **) wptr, BATCH_SIZE, NULL);
     dataplane_stats_record(POSTPROC_CORE_ID, num);
+    num = rte_ring_mc_dequeue_burst(postproc_workqueue, (void **) wptr, BATCH_SIZE, NULL);
   
     if (num == 0)
       continue;
@@ -411,7 +412,7 @@ int postproc_thread(void *args)
     if (ctx.num_dma > 0) {
       num_enq = rte_ring_mp_enqueue_burst(dma_cmd_ring, (void **) ctx.dma_wptrs, ctx.num_dma, NULL);
       if (num_enq < ctx.num_dma) {
-        fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+        DEBUG();
         abort();
       }
     }
@@ -419,7 +420,7 @@ int postproc_thread(void *args)
     if (ctx.num_qm > 0) {
       num_enq = rte_ring_mp_enqueue_burst(sched_bump_queue, (void **) ctx.qm_bumps, ctx.num_qm, NULL);
       if (num_enq < ctx.num_qm) {
-        fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+        DEBUG();
         abort();
       }
     }

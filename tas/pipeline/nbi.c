@@ -44,6 +44,7 @@ static unsigned poll_rx(uint16_t rxq)
 
   /* Free packets on enqueue failure */
   for (i = m; i < n; i++) {
+    DEBUG();
     rte_pktmbuf_free_seg(rx_pkts[i]);    // NOTE: We do not handle chained mbufs for efficiency!
   }
 
@@ -81,6 +82,7 @@ static unsigned poll_tx()
     }
     else {
       if (utils_reorder_insert(tx_sequencers[seqr], tx_pkts[i], seq) != 0) {
+        DEBUG();
         free_pkts[m++] = tx_pkts[i];
       }
     }
@@ -120,6 +122,7 @@ static unsigned poll_sequencers(uint16_t txq)
 
   /* Free untransmitted packets */
   for (i = m; i < k; i++) {
+    DEBUG();
     rte_pktmbuf_free_seg(tx_pkts[i]);    // NOTE: We do not handle chained mbufs for efficiency!
   }
 
@@ -158,15 +161,10 @@ int nbi_thread(void *args)
   while (1) {
 
     for (q = 0; q < NUM_SEQ_CTXS; q++) {
-      n = poll_rx(q);
-
-      dataplane_stats_record(NBI_CORE_ID, n);
-
-      n = poll_tx();
-
-      dataplane_stats_record(NBI_CORE_ID, n);
-
-      n = poll_sequencers(q);
+      n = 0;
+      n += poll_rx(q);
+      n += poll_tx();
+      n += poll_sequencers(q);
 
       dataplane_stats_record(NBI_CORE_ID, n);
     }    

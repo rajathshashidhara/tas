@@ -619,7 +619,7 @@ static void protocol_thread_init(struct protocol_thread_conf *conf)
 
 int protocol_thread(void *args)
 {
-  unsigned num, num_enq, x, y;
+  unsigned num, num_enq;
   unsigned fgp;
   struct protocol_thread_conf *conf = (struct protocol_thread_conf *) args;
   struct workptr_t result[BATCH_SIZE];
@@ -629,22 +629,17 @@ int protocol_thread(void *args)
 
   protocol_thread_init(conf);
   dataplane_stats_coreinit(PROTOCOL_CORE_ID);
+  num = 0;
 
   while (1) {
     for (fgp = 0; fgp < NUM_FLOWGRPS; fgp++) {
       cyc = rte_get_tsc_cycles();
       ts = generate_timestamp(cyc);
+
+      dataplane_stats_record(PROTOCOL_CORE_ID, num);
       num = 0;
-
-      x = poll_reorder_queue(fgp, result, BATCH_SIZE, ts);
-      num += x;
-
-      dataplane_stats_record(PROTOCOL_CORE_ID, x);
-
-      y = poll_protocol_workqueues(fgp, &result[num], BATCH_SIZE - num, ts);
-      num += y;
-
-      dataplane_stats_record(PROTOCOL_CORE_ID, y);
+      num += poll_reorder_queue(fgp, result, BATCH_SIZE, ts);
+      num += poll_protocol_workqueues(fgp, &result[num], BATCH_SIZE - num, ts);
 
       if (num == 0)
         continue;
@@ -652,11 +647,9 @@ int protocol_thread(void *args)
       num_enq = rte_ring_sp_enqueue_burst(postproc_workqueue, (void **) result, num, NULL);
       if (num < num_enq) {
         /* TODO:How to handle this? */
-        fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+        DEBUG();
         abort();
       }
-
-      dataplane_stats_record(PROTOCOL_CORE_ID, num);
     }
   }
 

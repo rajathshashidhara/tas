@@ -204,6 +204,8 @@ int appctx_thread(void *args)
     if (num_alloc < BATCH_SIZE) {
       if (rte_mempool_get_bulk(atx_desc_pool, (void **) &atx_desc[num_alloc], BATCH_SIZE - num_alloc) == 0) {
         num_alloc = BATCH_SIZE;
+      } else {
+        DEBUG();
       }
     }
 
@@ -228,7 +230,7 @@ int appctx_thread(void *args)
     /* Push ATX descriptors for processing */
     ret = rte_ring_sp_enqueue_burst(atx_ring, (void **) atx_descptr, num_tx, NULL);
     if (ret < num_tx) {
-      fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+      DEBUG();
       abort();
     }
     num_tx = MIN(ret, num_tx);

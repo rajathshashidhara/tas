@@ -362,7 +362,7 @@ static unsigned qman_poll(struct sched_ctx *ctx, unsigned num)
 
   enq_cnt = rte_ring_sp_enqueue_burst(sched_tx_queue, (void **) tx_events, tx_cnt, NULL);
   if (enq_cnt < tx_cnt) {
-    fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+    DEBUG();
     abort();
   }
 

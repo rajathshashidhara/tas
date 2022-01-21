@@ -209,6 +209,7 @@ static unsigned process_completion(struct dma_cmd_t **cmds,
   m = rte_ring_mp_enqueue_burst(nbi_tx_queue, (void **) tx_pkts, num, NULL);
   if (m < num) {
     /* Free untransmitted segments */
+    DEBUG();
     rte_pktmbuf_free_seg((struct rte_mbuf *) BUF_FROM_PTR(tx_pkts[i]));
   }
 
@@ -216,7 +217,7 @@ static unsigned process_completion(struct dma_cmd_t **cmds,
   m = rte_ring_mp_enqueue_burst(arx_ring, (void **) arx_descs, num_desc, NULL);
   if (m < num_desc) {
     /* TODO: How to handle this? */
-    fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+    DEBUG();
     abort();
   }
 

@@ -26,6 +26,7 @@
 #define UTILS_H_
 
 #include <stdint.h>
+#include <stdio.h>
 #include <arpa/inet.h>
 
 #define MIN(a,b) ((b) < (a) ? (b) : (a))
@@ -34,6 +35,7 @@
 #define STATIC_ASSERT(COND,MSG) typedef char static_assertion_##MSG[(COND)?1:-1]
 #define LIKELY(x) __builtin_expect((x),1)
 #define UNLIKELY(x) __builtin_expect((x),0)
+#define DEBUG() fprintf(stderr, "%s %s:%d\n", __func__, __FILE__, __LINE__)
 
 int util_parse_ipv4(const char *s, uint32_t *ip);
 int util_parse_mac(const char *s, uint64_t *mac);
