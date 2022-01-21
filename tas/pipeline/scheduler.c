@@ -439,15 +439,19 @@ static void sched_thread_init(struct sched_ctx *ctx)
 
 int scheduler_thread(void *args)
 {
+  unsigned x, y;
   struct sched_ctx ctx;
 
   (void) args;
 
   sched_thread_init(&ctx);
+  dataplane_stats_coreinit(SCHED_CORE_ID);
 
   while (1) {
-    qman_bump(&ctx, BATCH_SIZE);
-    qman_poll(&ctx, BATCH_SIZE);
+    x = qman_bump(&ctx, BATCH_SIZE);
+    dataplane_stats_record(SCHED_CORE_ID, x);
+    y = qman_poll(&ctx, BATCH_SIZE);
+    dataplane_stats_record(SCHED_CORE_ID, y);
   }
 
   return EXIT_SUCCESS;

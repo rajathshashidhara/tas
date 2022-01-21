@@ -370,11 +370,12 @@ void preproc_thread_init(struct preproc_thread_conf *conf) {
 }
 
 int preproc_thread(void *args) {
-  unsigned q, n;
+  unsigned q, n, x, y, z;
   struct preproc_thread_conf *conf = (struct preproc_thread_conf *) args;
   struct preproc_ctx ctx;
 
   preproc_thread_init(conf);
+  dataplane_stats_coreinit(PREPROC_CORE_ID);
 
   while (1) {
     /* Reset CTX */
@@ -384,19 +385,31 @@ int preproc_thread(void *args) {
     }
 
     n = 0;
-    n += preprocess_rx(&ctx, BATCH_SIZE);
-    n += preprocess_tx(&ctx, BATCH_SIZE - n);
-    n += preprocess_ac(&ctx, BATCH_SIZE - n);
+    x = preprocess_rx(&ctx, BATCH_SIZE);
+    n += x;
+
+    dataplane_stats_record(PREPROC_CORE_ID, x);
+
+    y = preprocess_tx(&ctx, BATCH_SIZE - n);
+    n += y;
+
+    dataplane_stats_record(PREPROC_CORE_ID, y);
+
+    z = preprocess_ac(&ctx, BATCH_SIZE - n);
+    n += z;
+
+    dataplane_stats_record(PREPROC_CORE_ID, z);
 
     if (n == 0)
       continue;
 
     /* Push descriptors out to protocol workqueues */
+    n = 0;
     for (q = 0; q < NUM_FLOWGRPS; q++) {
       if (ctx.num_proc[q] == 0)
         continue;
 
-      n = rte_ring_mp_enqueue_burst(protocol_workqueues[q], (void **) ctx.proc_work[q], ctx.num_proc[q], NULL);
+      n += rte_ring_mp_enqueue_burst(protocol_workqueues[q], (void **) ctx.proc_work[q], ctx.num_proc[q], NULL);
       if (n < ctx.num_proc[q]) {
         // TODO: ?
         fprintf(stderr, "%s:%d\n", __func__, __LINE__); 
@@ -404,12 +417,13 @@ int preproc_thread(void *args) {
     }
 
     if (ctx.num_sp > 0) {
-      n = rte_ring_mp_enqueue_burst(sp_rx_ring, (void **) ctx.sp_work, ctx.num_sp, NULL);
+      n += rte_ring_mp_enqueue_burst(sp_rx_ring, (void **) ctx.sp_work, ctx.num_sp, NULL);
       if (n < ctx.num_sp) {
         // TODO: ?
         fprintf(stderr, "%s:%d\n", __func__, __LINE__); 
       }
     }
+    dataplane_stats_record(PREPROC_CORE_ID, n);
   }
 
   return EXIT_SUCCESS;

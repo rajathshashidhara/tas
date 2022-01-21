@@ -33,6 +33,7 @@
 #include <utils.h>
 #include <tas.h>
 #include "internal.h"
+#include "pipeline.h"
 
 static void slowpath_block(uint32_t cur_ts);
 static void timeout_trigger(struct timeout *to, uint8_t type, void *opaque);
@@ -45,6 +46,8 @@ struct kernel_statistics kstats;
 uint32_t cur_ts;
 int kernel_notifyfd = 0;
 static int epfd;
+
+struct dataplane_load core_load;
 
 int slowpath_main(void)
 {
@@ -113,6 +116,8 @@ int slowpath_main(void)
     return EXIT_FAILURE;
   }
 
+  dataplane_stats_init();
+
   signal_tas_ready();
 
   notify_canblock_reset(&nbs);
@@ -142,6 +147,7 @@ int slowpath_main(void)
         printf("stats: drops=%"PRIu64" k_rexmit=%"PRIu64" ecn=%"PRIu64" acks=%"
             PRIu64"\n", kstats.drops, kstats.kernel_rexmit, kstats.ecn_marked,
             kstats.acks);
+        dataplane_dump_stats();
         fflush(stdout);
       }
       last_print = cur_ts;

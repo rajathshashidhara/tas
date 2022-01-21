@@ -2,7 +2,9 @@
 #define TAS_PIPELINE_H_
 
 #include <stdint.h>
+#include <stdio.h>
 #include <rte_config.h>
+#include <rte_cycles.h>
 #include <rte_ring.h>
 #include <rte_mempool.h>
 
@@ -22,6 +24,88 @@ STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
 #define NUM_DMA_CORES               1
 #define NUM_SCHED_CORES             1
 #define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES + NUM_DMA_CORES + NUM_SCHED_CORES)
+
+#define NBI_CORE_ID                 0
+#define PREPROC_CORE_ID             (NBI_CORE_ID + 1)
+#define PROTOCOL_CORE_ID            (PREPROC_CORE_ID + 1)
+#define POSTPROC_CORE_ID            (PROTOCOL_CORE_ID + 1)
+#define APPCTX_CORE_ID              (POSTPROC_CORE_ID + 1)
+#define DMA_CORE_ID                 (APPCTX_CORE_ID + 1)
+#define SCHED_CORE_ID               (DMA_CORE_ID + 1)
+
+// #define DATAPLANE_STATS
+#ifdef DATAPLANE_STATS
+struct dataplane_load {
+  uint64_t report_tsc;
+
+  uint64_t prev_tsc[NUM_PIPELINE_CORES];
+  uint64_t busy_cyc[NUM_PIPELINE_CORES];
+  uint64_t busy_cnt[NUM_PIPELINE_CORES];
+  uint64_t tot_cnt[NUM_PIPELINE_CORES];
+};
+
+extern struct dataplane_load core_load;
+
+static inline void dataplane_stats_init(void)
+{
+  core_load.report_tsc = rte_get_tsc_cycles();
+}
+static inline void dataplane_stats_coreinit(unsigned coreid)
+{
+  core_load.prev_tsc[coreid] = rte_get_tsc_cycles();
+  core_load.busy_cyc[coreid] = 0;
+  core_load.busy_cnt[coreid] = 0;
+  core_load.tot_cnt[coreid] = 0;
+}
+
+static inline void dataplane_stats_record(unsigned coreid, unsigned busy)
+{
+  uint64_t tsc = rte_get_tsc_cycles();
+  uint64_t cyc;
+
+  cyc = tsc - core_load.prev_tsc[coreid];
+  core_load.prev_tsc[coreid] = tsc;
+
+  if (busy) {
+    __sync_fetch_and_add(&core_load.busy_cyc[coreid], cyc);
+    __sync_fetch_and_add(&core_load.busy_cnt[coreid], 1);
+  }
+
+  __sync_fetch_and_add(&core_load.tot_cnt[coreid], 1);
+}
+
+static inline void dataplane_dump_stats(void)
+{
+  unsigned i;
+  uint64_t tsc = rte_get_tsc_cycles();
+  uint64_t cyc;
+
+  cyc = tsc - core_load.report_tsc;
+  core_load.report_tsc = tsc;
+
+  for (i = 0; i < NUM_PIPELINE_CORES; i++) {
+    printf("Core[%u] Cnt %lu %lu Cyc %lu %lu\n", i,
+      __sync_lock_test_and_set(&core_load.busy_cnt[i], 0),
+      __sync_lock_test_and_set(&core_load.tot_cnt[i], 0),
+      __sync_lock_test_and_set(&core_load.busy_cyc[i], 0),
+      cyc);
+  }
+}
+#else
+struct dataplane_load {};
+
+static inline void dataplane_stats_init(void) {}
+static inline void dataplane_stats_coreinit(unsigned coreid)
+{
+  (void) coreid;
+}
+static inline void dataplane_stats_record(unsigned coreid, unsigned busy)
+{
+  (void) coreid;
+  (void) busy;
+}
+static inline void dataplane_dump_stats(void) {}
+#endif
 
 #define BUF_FROM_PTR(WPTR)      ((void *) ((((intptr_t) (WPTR).__rawptr) << 22) >> 16))
 #define BUF_TO_PTR(BUF)       ((((uintptr_t) (BUF)) >> 6) & ((0x1ull << 42) - 1))

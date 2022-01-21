@@ -619,7 +619,7 @@ static void protocol_thread_init(struct protocol_thread_conf *conf)
 
 int protocol_thread(void *args)
 {
-  unsigned num, num_enq;
+  unsigned num, num_enq, x, y;
   unsigned fgp;
   struct protocol_thread_conf *conf = (struct protocol_thread_conf *) args;
   struct workptr_t result[BATCH_SIZE];
@@ -628,6 +628,7 @@ int protocol_thread(void *args)
   uint32_t ts;
 
   protocol_thread_init(conf);
+  dataplane_stats_coreinit(PROTOCOL_CORE_ID);
 
   while (1) {
     for (fgp = 0; fgp < NUM_FLOWGRPS; fgp++) {
@@ -635,8 +636,15 @@ int protocol_thread(void *args)
       ts = generate_timestamp(cyc);
       num = 0;
 
-      num += poll_reorder_queue(fgp, result, BATCH_SIZE, ts);
-      num += poll_protocol_workqueues(fgp, &result[num], BATCH_SIZE - num, ts);
+      x = poll_reorder_queue(fgp, result, BATCH_SIZE, ts);
+      num += x;
+
+      dataplane_stats_record(PROTOCOL_CORE_ID, x);
+
+      y = poll_protocol_workqueues(fgp, &result[num], BATCH_SIZE - num, ts);
+      num += y;
+
+      dataplane_stats_record(PROTOCOL_CORE_ID, y);
 
       if (num == 0)
         continue;
@@ -647,6 +655,8 @@ int protocol_thread(void *args)
         fprintf(stderr, "%s:%d\n", __func__, __LINE__);
         abort();
       }
+
+      dataplane_stats_record(PROTOCOL_CORE_ID, num);
     }
   }
 

@@ -368,6 +368,7 @@ int postproc_thread(void *args)
   struct workptr_t wptr[BATCH_SIZE];
 
   postproc_thread_init(conf);
+  dataplane_stats_coreinit(POSTPROC_CORE_ID);
 
   memset(&ctx, 0, sizeof(struct postproc_ctx));
 
@@ -383,6 +384,8 @@ int postproc_thread(void *args)
     }
 
     num = rte_ring_mc_dequeue_burst(postproc_workqueue, (void **) wptr, BATCH_SIZE, NULL);
+    dataplane_stats_record(POSTPROC_CORE_ID, num);
+  
     if (num == 0)
       continue;
 

@@ -148,17 +148,27 @@ static void nbi_thread_init(struct nbi_thread_conf *conf)
 
 int nbi_thread(void *args)
 {
+  unsigned n;
   uint16_t q;
   struct nbi_thread_conf *conf = (struct nbi_thread_conf *) args;
 
   nbi_thread_init(conf);
+  dataplane_stats_coreinit(NBI_CORE_ID);
 
   while (1) {
 
     for (q = 0; q < NUM_SEQ_CTXS; q++) {
-      poll_rx(q);
-      poll_tx();
-      poll_sequencers(q);
+      n = poll_rx(q);
+
+      dataplane_stats_record(NBI_CORE_ID, n);
+
+      n = poll_tx();
+
+      dataplane_stats_record(NBI_CORE_ID, n);
+
+      n = poll_sequencers(q);
+
+      dataplane_stats_record(NBI_CORE_ID, n);
     }    
   }
 

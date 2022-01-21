@@ -183,6 +183,7 @@ int appctx_thread(void *args)
   struct appctx_thread_conf *conf = (struct appctx_thread_conf *) args;
 
   appctx_thread_init(conf);
+  dataplane_stats_coreinit(APPCTX_CORE_ID);
 
   q_poll = 0;
   num_alloc = 0;
@@ -197,6 +198,7 @@ int appctx_thread(void *args)
     for (q = 0; q < FLEXNIC_PL_APPCTX_NUM; q++) {
       poll_arx_queue_free_entries(q);
     }
+    dataplane_stats_record(APPCTX_CORE_ID, num_rx);
 
     /* Allocate ATX descriptors */
     if (num_alloc < BATCH_SIZE) {
@@ -225,9 +227,14 @@ int appctx_thread(void *args)
 
     /* Push ATX descriptors for processing */
     ret = rte_ring_sp_enqueue_burst(atx_ring, (void **) atx_descptr, num_tx, NULL);
+    if (ret < num_tx) {
+      fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+      abort();
+    }
     num_tx = MIN(ret, num_tx);
     move_to_front((void **) atx_desc, num_tx, num_alloc - num_tx);
     num_alloc -= num_tx;
+    dataplane_stats_record(APPCTX_CORE_ID, num_tx);
   }
 
   return EXIT_SUCCESS;
