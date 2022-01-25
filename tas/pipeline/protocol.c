@@ -180,6 +180,7 @@ static void flows_ac(struct flextcp_pl_flowst_tcp_t *fs,
    * we're not sending anyways. */
   if (new_avail == 0 && rx_avail_prev == 0 && rx_avail != 0) {
     work->flags = WORK_FLAG_QM_FORCE;
+    DEBUG();
   }
 }
 

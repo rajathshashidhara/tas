@@ -234,7 +234,7 @@ int appctx_thread(void *args)
       abort();
     }
     num_tx = MIN(ret, num_tx);
-    move_to_front((void **) atx_desc, num_tx, num_alloc - num_tx);
+    move_to_front((void **) atx_desc, num_tx, num_alloc);
     num_alloc -= num_tx;
     dataplane_stats_record(APPCTX_CORE_ID, num_tx);
   }

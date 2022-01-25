@@ -46,7 +46,7 @@
 
 #define BUFFER_SIZE 2048
 #define RX_PERSEQR_MBUFS 2048
-#define TX_MBUFS         2048
+#define TX_MBUFS         4096
 #define SLOWPATH_MBUFS   256
 #define MBUF_SIZE   (BUFFER_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
 #define RX_DESCRIPTORS 2048
