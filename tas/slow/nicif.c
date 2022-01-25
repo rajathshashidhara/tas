@@ -344,14 +344,14 @@ int nicif_connection_stats(uint32_t f_id,
  */
 int nicif_connection_setrate(uint32_t f_id, uint32_t rate)
 {
-  struct flextcp_pl_flowst_tcp_t *fs;
+  struct flextcp_pl_flowst_cc_t *fs;
 
   if (f_id >= FLEXNIC_PL_FLOWST_NUM) {
     fprintf(stderr, "nicif_connection_stats: bad flow id\n");
     return -1;
   }
 
-  fs = &fp_state->flows_tcp_state[f_id];
+  fs = &fp_state->flows_cc_info[f_id];
   fs->tx_rate = rate;
 
   return 0;
