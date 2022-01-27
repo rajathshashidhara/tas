@@ -148,6 +148,7 @@ int slowpath_main(void)
             PRIu64"\n", kstats.drops, kstats.kernel_rexmit, kstats.ecn_marked,
             kstats.acks);
         dataplane_dump_stats();
+        network_stats_print();
         fflush(stdout);
       }
       last_print = cur_ts;

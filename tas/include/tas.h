@@ -55,6 +55,7 @@ void shm_set_ready(void);
 
 int network_init();
 void network_cleanup(void);
+void network_stats_print(void);
 
 int pipeline_init();
 void pipeline_cleanup(void);

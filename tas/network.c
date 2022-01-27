@@ -49,8 +49,8 @@
 #define TX_MBUFS         4096
 #define SLOWPATH_MBUFS   256
 #define MBUF_SIZE   (BUFFER_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
-#define RX_DESCRIPTORS 2048
-#define TX_DESCRIPTORS 2048
+#define RX_DESCRIPTORS 256
+#define TX_DESCRIPTORS 256
 #define MAX_ETH_RXQ    NUM_SEQ_CTXS
 
 uint8_t net_port_id = 0;
@@ -86,6 +86,25 @@ static struct rte_eth_dev_info eth_devinfo;
 struct rte_mempool *rx_pkt_mempools[NUM_SEQ_CTXS];
 struct rte_mempool *tx_pkt_mempool;
 struct rte_mempool *sp_pkt_mempool;
+
+void network_stats_print()
+{
+  struct rte_eth_stats stats;
+
+  rte_eth_stats_get(net_port_id, &stats);
+  printf("\tRX packets %" PRIu64"  bytes %" PRIu64"\n"
+        "\tRX errors %" PRIu64"  missed %" PRIu64"  no-mbuf %" PRIu64"\n"
+        "\tTX packets %" PRIu64"  bytes %" PRIu64"\n"
+        "\tTX errors %" PRIu64"\n",
+        stats.ipackets,
+        stats.ibytes,
+        stats.ierrors,
+        stats.imissed,
+        stats.rx_nombuf,
+        stats.opackets,
+        stats.obytes,
+        stats.oerrors);
+}
 
 int network_init()
 {
@@ -215,6 +234,12 @@ int network_init()
   if (tx_pkt_mempool == NULL) {
     fprintf(stderr, "network_thread_init: rte_mempool_create failed\n");
     return -1; 
+  }
+
+  /* Reset stats */
+  if (rte_eth_stats_reset(net_port_id) != 0) {
+    fprintf(stderr, "rte_eth_stats_reset: failed\n");
+    return -1;
   }
 
   /* Start device */
