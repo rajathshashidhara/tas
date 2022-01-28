@@ -29,6 +29,7 @@ struct protocol_thread_conf {
 };
 
 //#define SKIP_ACK 1
+#define WINDOW_SCALE  1
 
 static uint32_t tcp_txavail(struct flextcp_pl_flowst_tcp_t *fs,
                             uint32_t bump)
@@ -36,7 +37,7 @@ static uint32_t tcp_txavail(struct flextcp_pl_flowst_tcp_t *fs,
   uint32_t buf_avail, fc_avail;
 
   buf_avail = bump + fs->tx_avail;
-  fc_avail  = fs->tx_remote_avail - fs->tx_sent;
+  fc_avail  = (WINDOW_SCALE * fs->tx_remote_avail) - fs->tx_sent;
 
   return MIN(buf_avail, fc_avail);
 }
@@ -141,7 +142,7 @@ static void flows_tx(struct flextcp_pl_flowst_tcp_t *fs,
 
   work->seq = fs->tx_next_seq;
   work->ack = fs->rx_next_seq;
-  work->win = MIN(0xffff, fs->rx_avail);
+  work->win = MIN(0xffff, fs->rx_avail / WINDOW_SCALE);
   work->ts_val = ts;
   work->ts_ecr = fs->tx_next_ts;
   work->tcp_flags = (fin ? TCP_FIN : 0);
@@ -189,7 +190,7 @@ static void flows_gobackN_retransmit(struct flextcp_pl_flowst_tcp_t *fs)
   fs->dupack_cnt = 0;
   fs->tx_next_seq -= fs->tx_sent;
   fs->tx_avail += fs->tx_sent;
-  fs->tx_remote_avail += fs->tx_sent;
+  // fs->tx_remote_avail += fs->tx_sent;
   fs->tx_sent = 0;
 
   fs->cnt_tx_drops++;
@@ -293,7 +294,7 @@ finalize:
     work->len = 0;
     work->seq = fs->tx_next_seq;
     work->ack = fs->rx_next_seq;
-    work->win = MIN(0xffff, fs->rx_avail);
+    work->win = MIN(0xffff, fs->rx_avail / WINDOW_SCALE);
     work->tcp_flags = TCP_ACK | (((work->flags & WORK_FLAG_IP_ECE) == WORK_FLAG_IP_ECE) ? TCP_ECE : 0);
     work->ts_val = ts;
     work->ts_ecr = fs->tx_next_ts;
@@ -462,7 +463,7 @@ finalize:
     work->len = 0;
     work->seq = fs->tx_next_seq;
     work->ack = fs->rx_next_seq;
-    work->win = MIN(0xffff, fs->rx_avail);
+    work->win = MIN(0xffff, fs->rx_avail / WINDOW_SCALE);
     work->tcp_flags = TCP_ACK | (((work->flags & WORK_FLAG_IP_ECE) == WORK_FLAG_IP_ECE) ? TCP_ECE : 0);
     work->ts_val = ts;
     work->ts_ecr = fs->tx_next_ts;
