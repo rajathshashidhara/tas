@@ -915,7 +915,7 @@ static void flow_tx_segment(struct dataplane_context *ctx,
   p->tcp.seqno = t_beui32(seq);
   p->tcp.ackno = t_beui32(ack);
   TCPH_HDRLEN_FLAGS_SET(&p->tcp, 5 + optlen / 4, TCP_PSH | TCP_ACK | fin_fl);
-  p->tcp.wnd = t_beui16(MIN(0xFFFF, rxwnd));
+  p->tcp.wnd = t_beui16(MIN(0xFFFF, rxwnd / WINDOW_SCALE));
   p->tcp.chksum = 0;
   p->tcp.urgp = t_beui16(0);
 
@@ -998,7 +998,7 @@ static void flow_tx_ack(struct dataplane_context *ctx, uint32_t seq,
   p->tcp.seqno = t_beui32(seq);
   p->tcp.ackno = t_beui32(ack);
   TCPH_HDRLEN_FLAGS_SET(&p->tcp, TCPH_HDRLEN(&p->tcp), TCP_ACK | ecn_flags);
-  p->tcp.wnd = t_beui16(MIN(0xFFFF, rxwnd));
+  p->tcp.wnd = t_beui16(MIN(0xFFFF, rxwnd / WINDOW_SCALE));
   p->tcp.urgp = t_beui16(0);
 
   /* fill in timestamp option */
@@ -1044,7 +1044,6 @@ static void flow_reset_retransmit(struct flextcp_pl_flowst *fs)
     fs->tx_next_pos = fs->tx_len - x;
   }
   fs->tx_avail += fs->tx_sent;
-  fs->rx_remote_avail += fs->tx_sent;
   fs->tx_sent = 0;
 
   /* cut rate by half if first drop in control interval */

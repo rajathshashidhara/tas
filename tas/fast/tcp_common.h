@@ -29,6 +29,7 @@
 #include <utils.h>
 
 #define ALLOW_FUTURE_ACKS 1
+#define WINDOW_SCALE      1
 
 /**
  * Check if received packet with sequence number #pkt_seq and #pkt_bytes bytes
@@ -219,7 +220,7 @@ static inline uint32_t tcp_txavail(const struct flextcp_pl_flowst *fs,
   buf_avail = (pavail != NULL ? *pavail : fs->tx_avail);
 
   /* flow control window */
-  fc_avail = fs->rx_remote_avail - fs->tx_sent;
+  fc_avail = (WINDOW_SCALE * fs->rx_remote_avail) - fs->tx_sent;
 
   return MIN(buf_avail, fc_avail);
 }
