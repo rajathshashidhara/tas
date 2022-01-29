@@ -372,7 +372,7 @@ void preproc_thread_init(struct preproc_thread_conf *conf) {
 }
 
 int preproc_thread(void *args) {
-  unsigned q, n, x;
+  unsigned q, n, x, y, z;
   struct preproc_thread_conf *conf = (struct preproc_thread_conf *) args;
   struct preproc_ctx ctx;
 
@@ -386,12 +386,21 @@ int preproc_thread(void *args) {
     for (q = 0; q < NUM_FLOWGRPS; q++) {
       ctx.num_proc[q] = 0;
     }
-
     dataplane_stats_record(PREPROC_CORE_ID, n);
+
     n = 0;
-    n += preprocess_rx(&ctx, BATCH_SIZE);
-    n += preprocess_tx(&ctx, BATCH_SIZE - n);
-    n += preprocess_ac(&ctx, BATCH_SIZE - n);
+
+    x = preprocess_rx(&ctx, BATCH_SIZE);
+    n += x;
+    dataplane_stats_record(PREPROC_CORE_ID, x);
+
+    y = preprocess_tx(&ctx, BATCH_SIZE - n);
+    n += y;
+    dataplane_stats_record(PREPROC_CORE_ID, y);
+
+    z = preprocess_ac(&ctx, BATCH_SIZE - n);
+    n += z;
+    dataplane_stats_record(PREPROC_CORE_ID, z);
 
     if (n == 0)
       continue;

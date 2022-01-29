@@ -233,9 +233,10 @@ int dma_thread(void *args)
   (void) args;
   dataplane_stats_coreinit(DMA_CORE_ID);
 
+  num = 0;
   while (1) {
-    num = rte_ring_mc_dequeue_burst(dma_cmd_ring, (void **) wptrs, BATCH_SIZE, NULL);
     dataplane_stats_record(DMA_CORE_ID, num);
+    num = rte_ring_mc_dequeue_burst(dma_cmd_ring, (void **) wptrs, BATCH_SIZE, NULL);
     if (num == 0)
       continue;
 

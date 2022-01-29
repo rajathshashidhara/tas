@@ -134,7 +134,7 @@ int pipeline_init()
 
   /* Init scheduler queue */
   snprintf(name, 64, "sched_wq_");
-  sched_tx_queue = rte_ring_create(name, NUM_SEQ_CTXS * RING_SIZE, rte_socket_id(),
+  sched_tx_queue = rte_ring_create(name, 16 * NUM_SEQ_CTXS * RING_SIZE, rte_socket_id(),
           RING_F_SP_ENQ);
   
   if (sched_tx_queue == NULL) {

@@ -34,6 +34,13 @@ STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
 #define SCHED_CORE_ID               (DMA_CORE_ID + 1)
 
 // #define DATAPLANE_STATS
+#define NBI_STATS       0
+#define PREPROC_STATS   0
+#define PROTOCOL_STATS  0
+#define POSTPROC_STATS  0
+#define APPCTX_STATS    0
+#define DMA_STATS       0
+#define SCHED_STATS     0
 #ifdef DATAPLANE_STATS
 struct dataplane_load {
   uint64_t report_tsc;
@@ -60,6 +67,60 @@ static inline void dataplane_stats_coreinit(unsigned coreid)
 
 static inline void dataplane_stats_record(unsigned coreid, unsigned busy)
 {
+  switch (coreid) {
+  case NBI_CORE_ID:
+#if NBI_STATS
+    break;
+#else
+    return;
+#endif
+
+  case PREPROC_CORE_ID:
+#if PREPROC_STATS
+    break;
+#else
+    return;
+#endif
+
+  case PROTOCOL_CORE_ID:
+#if PROTOCOL_STATS
+    break;
+#else
+    return;
+#endif
+
+  case POSTPROC_CORE_ID:
+#if POSTPROC_STATS
+    break;
+#else
+    return;
+#endif
+
+  case APPCTX_CORE_ID:
+#if APPCTX_STATS
+    break;
+#else
+    return;
+#endif
+
+  case DMA_CORE_ID:
+#if DMA_STATS
+    break;
+#else
+    return;
+#endif
+
+  case SCHED_CORE_ID:
+#if SCHED_STATS
+    break;
+#else
+    return;
+#endif
+
+  default:
+    return;
+  }
+
   uint64_t tsc = rte_get_tsc_cycles();
   uint64_t cyc;
 

@@ -161,11 +161,13 @@ int nbi_thread(void *args)
   while (1) {
 
     for (q = 0; q < NUM_SEQ_CTXS; q++) {
-      n = 0;
-      n += poll_rx(q);
-      n += poll_tx();
-      n += poll_sequencers(q);
+      n = poll_rx(q);
+      dataplane_stats_record(NBI_CORE_ID, n);
 
+      n = poll_tx();
+      dataplane_stats_record(NBI_CORE_ID, n);
+
+      n = poll_sequencers(q);
       dataplane_stats_record(NBI_CORE_ID, n);
     }    
   }
