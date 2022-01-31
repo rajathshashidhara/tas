@@ -168,7 +168,7 @@ static int common_thread(void *arg)
   ctx->evfd = eventfd(0, EFD_NONBLOCK);
   fp_state->kctx[ctx->id].evfd = ctx->evfd;
 
-  if (id < (NUM_NBI_CORES + NUM_NBI_CORES)) {
+  if (id < (NBI_CORE_ID + NUM_NBI_CORES)) {
     nbi_thread(NULL);
   }
   else if (id < (PREPROC_CORE_ID + NUM_PREPROC_CORES)) {
