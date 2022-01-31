@@ -146,6 +146,7 @@ error_exit:
   return res;
 }
 
+STATIC_ASSERT(NBI_CORE_ID == 0, nbi_coreid);
 static int common_thread(void *arg)
 {
   struct dataplane_context *ctx;
@@ -167,25 +168,25 @@ static int common_thread(void *arg)
   ctx->evfd = eventfd(0, EFD_NONBLOCK);
   fp_state->kctx[ctx->id].evfd = ctx->evfd;
 
-  if (id < NUM_NBI_CORES) {
+  if (id < (NUM_NBI_CORES + NUM_NBI_CORES)) {
     nbi_thread(NULL);
   }
-  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES)) {
+  else if (id < (PREPROC_CORE_ID + NUM_PREPROC_CORES)) {
     preproc_thread(NULL);
   }
-  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES)) {
+  else if (id < (PROTOCOL_CORE_ID + NUM_PROTOCOL_CORES)) {
     protocol_thread(NULL);
   }
-  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES)) {
+  else if (id < (POSTPROC_CORE_ID + NUM_POSTPROC_CORES)) {
     postproc_thread(NULL);
   }
-  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES)) {
+  else if (id < (APPCTX_CORE_ID + NUM_APPCTX_CORES)) {
     appctx_thread(NULL);
   }
-  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES + NUM_DMA_CORES)) {
+  else if (id < (DMA_CORE_ID + NUM_DMA_CORES)) {
     dma_thread(NULL);
   }
-  else if (id < (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES + NUM_DMA_CORES + NUM_SCHED_CORES)) {
+  else if (id < (SCHED_CORE_ID + NUM_SCHED_CORES)) {
     scheduler_thread(NULL);
   }
 

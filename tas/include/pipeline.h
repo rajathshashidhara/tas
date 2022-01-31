@@ -26,12 +26,12 @@ STATIC_ASSERT(NUM_FLOWGRPS <= 8, num_flowgrps);
 #define NUM_PIPELINE_CORES          (NUM_NBI_CORES + NUM_PREPROC_CORES + NUM_PROTOCOL_CORES + NUM_POSTPROC_CORES + NUM_APPCTX_CORES + NUM_DMA_CORES + NUM_SCHED_CORES)
 
 #define NBI_CORE_ID                 0
-#define PREPROC_CORE_ID             (NBI_CORE_ID + 1)
-#define PROTOCOL_CORE_ID            (PREPROC_CORE_ID + 1)
-#define POSTPROC_CORE_ID            (PROTOCOL_CORE_ID + 1)
-#define APPCTX_CORE_ID              (POSTPROC_CORE_ID + 1)
-#define DMA_CORE_ID                 (APPCTX_CORE_ID + 1)
-#define SCHED_CORE_ID               (DMA_CORE_ID + 1)
+#define PREPROC_CORE_ID             (NBI_CORE_ID + NUM_NBI_CORES)
+#define PROTOCOL_CORE_ID            (PREPROC_CORE_ID + NUM_PREPROC_CORES)
+#define POSTPROC_CORE_ID            (PROTOCOL_CORE_ID + PROTOCOL_CORE_ID)
+#define APPCTX_CORE_ID              (POSTPROC_CORE_ID + NUM_POSTPROC_CORES)
+#define DMA_CORE_ID                 (APPCTX_CORE_ID + NUM_APPCTX_CORES)
+#define SCHED_CORE_ID               (DMA_CORE_ID + NUM_DMA_CORES)
 
 // #define DATAPLANE_STATS
 #define NBI_STATS       0
