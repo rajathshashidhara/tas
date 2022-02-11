@@ -28,7 +28,7 @@ RTE_SDK ?= /usr/
 DPDK_PMDS ?= ixgbe i40e tap virtio
 
 DPDK_CPPFLAGS += -I$(RTE_SDK)/include -I$(RTE_SDK)/include/dpdk
-DPDK_LDFLAGS+= -L$(RTE_SDK)/lib//lib/aarch64-linux-gnu/
+DPDK_LDFLAGS+= -L$(RTE_SDK)/lib/aarch64-linux-gnu/
 DPDK_LDLIBS+= \
   -Wl,--whole-archive \
    $(addprefix -lrte_pmd_,$(DPDK_PMDS)) \
@@ -51,6 +51,7 @@ DPDK_LDLIBS+= \
   -lrte_gso \
   -Wl,--no-whole-archive \
   -ldl \
+  -libverbs -lmlx5 \
   $(EXTRA_LIBS_DPDK)
 
 
