@@ -322,6 +322,7 @@ static inline void fetch_4ts(struct flextcp_context *ctx, uint32_t *heads,
 static int fastpath_poll_vec(struct flextcp_context *ctx, int num,
     struct flextcp_event *events, int *used)
 {
+  return fastpath_poll(ctx, num, events, used);
 #if 0
   int i, j, ran_out, found, found_inner;
   volatile struct flextcp_pl_arx *arx;
@@ -478,7 +479,7 @@ int flextcp_context_poll(struct flextcp_context *ctx, int num,
   }
 
   /* poll NIC queues */
-  fastpath_poll(ctx, num - i, events + i, &j);
+  fastpath_poll_vec(ctx, num - i, events + i, &j);
 
   txq_probe(ctx, num);
   conns_bump(ctx);
