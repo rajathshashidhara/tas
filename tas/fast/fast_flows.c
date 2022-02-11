@@ -1076,8 +1076,8 @@ void fast_flows_kernelxsums(struct network_buf_handle *nbh,
 
 static inline uint32_t flow_hash(struct flow_key *k)
 {
-  return crc32c_sse42_u32(k->local_port.x | (((uint32_t) k->remote_port.x) << 16),
-      crc32c_sse42_u64(k->local_ip.x | (((uint64_t) k->remote_ip.x) << 32), 0));
+  return crc32c_arm64_u32(k->local_port.x | (((uint32_t) k->remote_port.x) << 16),
+      crc32c_arm64_u64(k->local_ip.x | (((uint64_t) k->remote_ip.x) << 32), 0));
 }
 
 void fast_flows_packet_fss(struct dataplane_context *ctx,
