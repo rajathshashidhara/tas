@@ -77,14 +77,16 @@ static inline beui64_t t_beui64(uint64_t x)
 
 static inline uint64_t util_rdtsc(void)
 {
-    uint32_t eax, edx;
-    asm volatile ("rdtsc" : "=a" (eax), "=d" (edx));
-    return ((uint64_t) edx << 32) | eax;
+  uint64_t tsc;
+
+  asm volatile("mrs %0, pmccntr_el0" : "=r"(tsc));
+
+  return tsc;
 }
 
 static inline void util_prefetch0(const volatile void *p)
 {
-  asm volatile ("prefetcht0 %[p]" : : [p] "m" (*(const volatile char *)p));
+  asm volatile ("PRFM PLDL1KEEP, [%0]" : : "r" (p));
 }
 
 

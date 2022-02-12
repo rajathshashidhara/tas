@@ -41,45 +41,26 @@
 
 static inline void util_spin_lock(volatile uint32_t *sl)
 {
-  uint32_t lock_val = 1;
+  uint32_t exp = 0;
 
-  asm volatile (
-      "1:\n"
-      "xchg %[locked], %[lv]\n"
-      "test %[lv], %[lv]\n"
-      "jz 3f\n"
-      "2:\n"
-      "pause\n"
-      "cmpl $0, %[locked]\n"
-      "jnz 2b\n"
-      "jmp 1b\n"
-      "3:\n"
-      : [locked] "=m" (*sl), [lv] "=q" (lock_val)
-      : "[lv]" (lock_val)
-      : "memory");
+  while (!__atomic_compare_exchange_n(sl, &exp, 1, 0,
+                          __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+    while (__atomic_load_n(sl, __ATOMIC_RELAXED))
+      asm volatile("yield" ::: "memory");
+    exp = 0;
+  }
 }
 
 static inline void util_spin_unlock(volatile uint32_t *sl)
 {
-  uint32_t unlock_val = 0;
-
-  asm volatile (
-      "xchg %[locked], %[ulv]\n"
-      : [locked] "=m" (*sl), [ulv] "=q" (unlock_val)
-      : "[ulv]" (unlock_val)
-      : "memory");
+  __atomic_store_n(sl, 0, __ATOMIC_RELEASE);
 }
 
 static inline int util_spin_trylock(volatile uint32_t *sl)
 {
-  uint32_t lockval = 1;
-
-  asm volatile (
-      "xchg %[locked], %[lockval]"
-      : [locked] "=m" (*sl), [lockval] "=q" (lockval)
-      : "[lockval]" (lockval)
-      : "memory");
-
-  return lockval == 0;
+  uint32_t exp = 0;
+  return __atomic_compare_exchange_n(sl, &exp, 1,
+                          0, /* disallow spurious failure */
+                          __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
 }
 #endif /* ndef UTILS_SYNC_H_ */

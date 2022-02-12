@@ -677,8 +677,8 @@ static inline void conn_free(struct connection *conn)
 static inline uint32_t conn_hash(uint32_t l_ip, uint32_t r_ip, uint16_t l_po,
     uint16_t r_po)
 {
-  return crc32c_sse42_u32(l_po | (((uint32_t) r_po) << 16),
-      crc32c_sse42_u64(l_ip | (((uint64_t) r_ip) << 32), 0));
+  return crc32c_arm64_u32(l_po | (((uint32_t) r_po) << 16),
+      crc32c_arm64_u64(l_ip | (((uint64_t) r_ip) << 32), 0));
 }
 
 static void conn_register(struct connection *conn)
@@ -1043,7 +1043,7 @@ static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,
   /* calculate header checksums */
   p->ip.chksum = rte_ipv4_cksum((void *) &p->ip);
   p->tcp.chksum = rte_ipv4_udptcp_cksum((void *) &p->ip, (void *) &p->tcp);
-  
+
   /* send packet */
   nicif_tx_send(new_tail);
   return 0;

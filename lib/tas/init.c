@@ -230,6 +230,7 @@ static int fastpath_poll(struct flextcp_context *ctx, int num,
   return 0;
 }
 
+#if 0
 static inline void fetch_8ts(struct flextcp_context *ctx, uint32_t *heads,
     uint16_t q, uint8_t *ts)
 {
@@ -316,11 +317,13 @@ static inline void fetch_4ts(struct flextcp_context *ctx, uint32_t *heads,
       : "r" (p0), "r" (p1), "r" (p2), "r" (p3), "r" (ts)
       : "memory");
 }
-
+#endif
 
 static int fastpath_poll_vec(struct flextcp_context *ctx, int num,
     struct flextcp_event *events, int *used)
 {
+  return fastpath_poll(ctx, num, events, used);
+#if 0
   int i, j, ran_out, found, found_inner;
   volatile struct flextcp_pl_arx *arx;
   uint32_t head;
@@ -448,6 +451,7 @@ static int fastpath_poll_vec(struct flextcp_context *ctx, int num,
 
   *used = i;
   return 0;
+#endif
 }
 
 
