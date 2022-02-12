@@ -45,7 +45,7 @@ static inline uint32_t
 flow_hash_crc(const void *data, __rte_unused uint32_t data_len,
         __rte_unused uint32_t init_val)
 {
-  return crc32c_sse42_u32(((uint32_t *) data)[2], crc32c_sse42_u64(((uint64_t *) data)[0], 0));
+  return crc32c_arm64_u32(((uint32_t *) data)[2], crc32c_arm64_u64(((uint64_t *) data)[0], 0));
 }
 
 static struct rte_hash_parameters hash_conf = {
@@ -96,10 +96,10 @@ int pipeline_init()
   hash_conf.socket_id = rte_socket_id();
   hash_conf.extra_flag = RTE_HASH_EXTRA_FLAGS_RW_CONCURRENCY_LF;
   flow_lookup_table = rte_hash_create(&hash_conf);
-  
+
   if (flow_lookup_table == NULL) {
     fprintf(stderr, "%s: %d\n", __func__, __LINE__);
-    return -1; 
+    return -1;
   }
 
   /* Init Protocol workqueues */
@@ -107,7 +107,7 @@ int pipeline_init()
     snprintf(name, 64, "protocol_wq_%u", i);
     protocol_workqueues[i] = rte_ring_create(name, 4 * RING_SIZE, rte_socket_id(),
             RING_F_SC_DEQ);   // 4 -> (RX + TX + AC + RETX)
-    
+
     if (protocol_workqueues[i] == NULL) {
       fprintf(stderr, "%s: %d\n", __func__, __LINE__);
       return -1;
@@ -136,7 +136,7 @@ int pipeline_init()
   snprintf(name, 64, "sched_wq_");
   sched_tx_queue = rte_ring_create(name, 16 * NUM_SEQ_CTXS * RING_SIZE, rte_socket_id(),
           RING_F_SP_ENQ);
-  
+
   if (sched_tx_queue == NULL) {
     fprintf(stderr, "%s: %d\n", __func__, __LINE__);
     return -1;
@@ -145,7 +145,7 @@ int pipeline_init()
   snprintf(name, 64, "sched_bump_");
   sched_bump_queue = rte_ring_create(name, NUM_SEQ_CTXS * RING_SIZE, rte_socket_id(),
           RING_F_SC_DEQ);
-  
+
   if (sched_bump_queue == NULL) {
     fprintf(stderr, "%s: %d\n", __func__, __LINE__);
     return -1;
@@ -157,7 +157,7 @@ int pipeline_init()
           0, NULL, NULL, NULL, NULL, rte_socket_id(), MEMPOOL_F_SP_PUT);
   if (arx_desc_pool == NULL) {
     fprintf(stderr, "network_thread_init: rte_mempool_create failed\n");
-    return -1; 
+    return -1;
   }
 
   /* Init ATX desc pool */
@@ -166,7 +166,7 @@ int pipeline_init()
           0, NULL, NULL, NULL, NULL, rte_socket_id(), MEMPOOL_F_SC_GET);
   if (atx_desc_pool == NULL) {
     fprintf(stderr, "network_thread_init: rte_mempool_create failed\n");
-    return -1; 
+    return -1;
   }
 
   /* Init ARX queue */
