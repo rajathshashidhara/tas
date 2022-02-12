@@ -79,7 +79,7 @@ static inline uint64_t util_rdtsc(void)
 {
   uint64_t tsc;
 
-  asm volatile("mrs %0, pmccntr_el0" : "=r"(tsc));
+  asm volatile("mrs %0, cntvct_el0" : "=r" (tsc));
 
   return tsc;
 }
