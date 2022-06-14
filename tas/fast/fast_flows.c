@@ -247,8 +247,10 @@ void fast_flows_packet_parse(struct dataplane_context *ctx,
         (IPH_HL(&p->ip) != 5) |
         (TCPH_HDRLEN(&p->tcp) < 5) |
         (len < f_beui16(p->ip.len) + sizeof(p->eth)) |
-        (tcp_parse_options(p, len, &tos[i]) != 0) |
-        (tos[i].ts == NULL);
+        (tcp_parse_options(p, len, &tos[i]) != 0);
+#ifndef TCP_NOTS
+    cond = cond | (tos[i].ts == NULL);
+#endif
 
     if (cond)
       fss[i] = NULL;
@@ -284,7 +286,7 @@ int fast_flows_packet(struct dataplane_context *ctx,
   uint32_t payload_bytes, payload_off, seq, ack, old_avail, new_avail,
            orig_payload;
   uint8_t *payload;
-  uint32_t rx_bump = 0, tx_bump = 0, rx_pos, rtt;
+  uint32_t rx_bump = 0, tx_bump = 0, rx_pos;
   int no_permanent_sp = 0;
   uint16_t tcp_extra_hlen, trim_start, trim_end;
   uint16_t flow_id = fs - fp_state->flowst;
@@ -485,6 +487,8 @@ int fast_flows_packet(struct dataplane_context *ctx,
 #endif
 
   /* update rtt estimate */
+#ifndef TCP_NOTS
+  uint32_t rtt;
   fs->tx_next_ts = f_beui32(opts->ts->ts_val);
   if (LIKELY((TCPH_FLAGS(&p->tcp) & TCP_ACK) == TCP_ACK &&
       f_beui32(opts->ts->ts_ecr) != 0))
@@ -498,6 +502,7 @@ int fast_flows_packet(struct dataplane_context *ctx,
       }
     }
   }
+#endif
 
   fs->rx_remote_avail = f_beui16(p->tcp.wnd);
 
@@ -881,10 +886,14 @@ static void flow_tx_segment(struct dataplane_context *ctx,
 {
   uint16_t hdrs_len, optlen, fin_fl;
   struct pkt_tcp *p = network_buf_buf(nbh);
-  struct tcp_timestamp_opt *opt_ts;
 
   /* calculate header length depending on options */
+#ifndef TCP_NOTS
+  struct tcp_timestamp_opt *opt_ts;
   optlen = (sizeof(*opt_ts) + 3) & ~3;
+#else
+  optlen = 0;
+#endif
   hdrs_len = sizeof(*p) + optlen;
 
   /* fill headers */
@@ -919,6 +928,7 @@ static void flow_tx_segment(struct dataplane_context *ctx,
   p->tcp.chksum = 0;
   p->tcp.urgp = t_beui16(0);
 
+#ifndef TCP_NOTS
   /* fill in timestamp option */
   memset(p + 1, 0, optlen);
   opt_ts = (struct tcp_timestamp_opt *) (p + 1);
@@ -926,6 +936,7 @@ static void flow_tx_segment(struct dataplane_context *ctx,
   opt_ts->length = sizeof(*opt_ts);
   opt_ts->ts_val = t_beui32(ts_my);
   opt_ts->ts_ecr = t_beui32(ts_echo);
+#endif
 
   /* add payload if requested */
   if (payload > 0) {
@@ -1001,9 +1012,11 @@ static void flow_tx_ack(struct dataplane_context *ctx, uint32_t seq,
   p->tcp.wnd = t_beui16(MIN(0xFFFF, rxwnd));
   p->tcp.urgp = t_beui16(0);
 
+#ifndef TCP_NOTS
   /* fill in timestamp option */
   ts_opt->ts_val = t_beui32(myts);
   ts_opt->ts_ecr = t_beui32(echots);
+#endif
 
   p->ip.len = t_beui16(hdrlen - offsetof(struct pkt_tcp, ip));
   p->ip.ttl = 0xff;

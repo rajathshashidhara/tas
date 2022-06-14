@@ -13,7 +13,7 @@ TAS_OBJS := $(addprefix $(d)/, \
 
 exec := $(d)/tas
 
-TAS_CPPFLAGS := -Iinclude/ -I$(d)/include/ $(DPDK_CPPFLAGS) -DHANDSHAKE_BYPASS
+TAS_CPPFLAGS := -Iinclude/ -I$(d)/include/ $(DPDK_CPPFLAGS) -DHANDSHAKE_BYPASS -DTCP_NOTS
 TAS_CFLAGS := $(DPDK_CFLAGS)
 
 $(TAS_OBJS): CPPFLAGS += $(TAS_CPPFLAGS)
