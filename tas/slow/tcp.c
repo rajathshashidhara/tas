@@ -88,6 +88,9 @@ static void conn_failed(struct connection *c, int status);
 static void conn_timeout_arm(struct connection *c, int type);
 static void conn_timeout_disarm(struct connection *c);
 static void conn_close_timeout(struct connection *c);
+#ifdef HANDSHAKE_BYPASS
+static int conn_syn_sent_bypass(struct connection *c);
+#endif
 
 static struct listener *listener_lookup(const struct pkt_tcp *p);
 static void listener_packet(struct listener *l, const struct pkt_tcp *p,
@@ -194,8 +197,11 @@ int tcp_open(struct app_context *ctx, uint64_t opaque, uint32_t remote_ip,
   } else if (ret == 0) {
     CONN_DEBUG0(conn, "routing_resolve succeeded immediately\n");
     conn_register(conn);
-
+#ifdef HANDSHAKE_BYPASS
+    ret = conn_syn_sent_bypass(conn);
+#else
     ret = conn_arp_done(conn);
+#endif
   } else {
     CONN_DEBUG0(conn, "routing_resolve pending\n");
     conn_register(conn);
@@ -532,6 +538,42 @@ static int conn_arp_done(struct connection *conn)
   CONN_DEBUG0(conn, "SYN SENT\n");
   return 0;
 }
+
+#ifdef HANDSHAKE_BYPASS
+static int conn_syn_sent_bypass(struct connection *c)
+{
+  c->remote_seq = 1;
+  c->local_seq = 0;
+  c->syn_ts = 0;
+
+  c->flags |= NICIF_CONN_ECN;
+
+  cc_conn_init(c);
+
+  c->comp.q = &conn_async_q;
+  c->comp.notify_fd = -1;
+  c->comp.status = 0;
+
+  if (nicif_connection_add(c->db_id, c->remote_mac, c->local_ip, c->local_port,
+        c->remote_ip, c->remote_port, c->rx_buf - (uint8_t *) tas_shm,
+        c->rx_len, c->tx_buf - (uint8_t *) tas_shm, c->tx_len,
+        c->remote_seq, c->local_seq, c->opaque, c->flags, c->cc_rate,
+        c->fn_core, c->flow_group, &c->flow_id)
+      != 0)
+  {
+    fprintf(stderr, "conn_syn_sent_packet: nicif_connection_add failed\n");
+    return -1;
+  }
+
+  CONN_DEBUG0(c, "conn_syn_sent_packet: connection registered\n");
+
+  c->status = CONN_OPEN;
+
+  appif_conn_opened(c, 0);
+
+  return 0;
+}
+#endif
 
 static int conn_syn_sent_packet(struct connection *c, const struct pkt_tcp *p,
     const struct tcp_opts *opts)
@@ -1039,7 +1081,7 @@ static inline int send_control_raw(uint64_t remote_mac, uint32_t remote_ip,
   /* calculate header checksums */
   p->ip.chksum = rte_ipv4_cksum((void *) &p->ip);
   p->tcp.chksum = rte_ipv4_udptcp_cksum((void *) &p->ip, (void *) &p->tcp);
-  
+
   /* send packet */
   nicif_tx_send(new_tail, 0);
   return 0;

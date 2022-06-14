@@ -13,14 +13,14 @@ TAS_OBJS := $(addprefix $(d)/, \
 
 exec := $(d)/tas
 
-TAS_CPPFLAGS := -Iinclude/ -I$(d)/include/ $(DPDK_CPPFLAGS)
+TAS_CPPFLAGS := -Iinclude/ -I$(d)/include/ $(DPDK_CPPFLAGS) -DHANDSHAKE_BYPASS
 TAS_CFLAGS := $(DPDK_CFLAGS)
 
 $(TAS_OBJS): CPPFLAGS += $(TAS_CPPFLAGS)
 $(TAS_OBJS): CFLAGS += $(TAS_CFLAGS)
 
 $(exec): LDFLAGS += $(DPDK_LDFLAGS)
-$(exec): LDLIBS += $(DPDK_LDLIBS) 
+$(exec): LDLIBS += $(DPDK_LDLIBS)
 $(exec): $(TAS_OBJS) $(LIB_UTILS_OBJS)
 
 DEPS += $(TAS_OBJS:.o=.d)
