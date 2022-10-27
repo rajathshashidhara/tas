@@ -216,9 +216,6 @@ static struct option opts[] = {
     { .name = "ready-fd",
       .has_arg = required_argument,
       .val = CP_READY_FD },
-    { .name = "dpdk-extra",
-      .has_arg = required_argument,
-      .val = CP_DPDK_EXTRA },
     { .name = "quiet",
       .has_arg = no_argument,
       .val = CP_QUIET },
@@ -233,7 +230,8 @@ static inline int parse_int8(const char *s, uint8_t *pu8);
 static inline int parse_double(const char *s, double *pd);
 static inline int parse_cidr(char *s, uint32_t *ip, uint8_t *prefix);
 static inline int parse_route(char *s, struct configuration *c);
-static inline int parse_arg_append(char *s, struct configuration *c);
+static inline int parse_arg_append(struct configuration *c,
+    int argc, char *argv[], int tas_optidx);
 
 int config_parse(struct configuration *c, int argc, char *argv[])
 {
@@ -514,13 +512,8 @@ int config_parse(struct configuration *c, int argc, char *argv[])
         }
         c->ready_fd = i;
         break;
-      case CP_DPDK_EXTRA:
-        if (parse_arg_append(optarg, c) != 0) {
-          goto failed;
-        }
-        break;
       case CP_QUIET:
-	c->quiet = 1;
+	      c->quiet = 1;
         break;
 
       case -1:
@@ -533,12 +526,12 @@ int config_parse(struct configuration *c, int argc, char *argv[])
     }
   }
 
-  if (optind != argc) {
-    goto failed;
-  }
-
   if(c->ip == 0) {
     fprintf(stderr, "ip-addr is a required argument!\n");
+  }
+
+  if (parse_arg_append(c, argc, argv, optind) != 0) {
+    goto failed;
   }
 
   return 0;
@@ -597,7 +590,7 @@ static int config_defaults(struct configuration *c, char *progname)
   c->quiet = 0;
 
   c->dpdk_argc = 1;
-  if ((c->dpdk_argv = calloc(2, sizeof(*c->dpdk_argv))) == NULL) {
+  if ((c->dpdk_argv = calloc(1, sizeof(*c->dpdk_argv))) == NULL) {
     perror("config_defaults: calloc failed");
     return -1;
   }
@@ -696,7 +689,6 @@ static void print_usage(struct configuration *c, char *progname)
           "in us [default: %"PRIu32"]\n"
       "  --fp-poll-interval-app      App polling interval before blocking "
           "in us [default: %"PRIu32"]\n"
-      "  --dpdk-extra=ARG            Add extra DPDK argument\n"
       "\n"
       "Host kernel interface:\n"
       "  --kni-name=NAME             Network interface name to expose "
@@ -823,19 +815,25 @@ failed:
   return -1;
 }
 
-static inline int parse_arg_append(char *s, struct configuration *c)
+static inline int parse_arg_append(struct configuration *c,
+    int argc, char *argv[], int tas_optidx)
 {
-  char **new;
+  char **new_argv;
+  int i;
 
-  if ((new = realloc(c->dpdk_argv, sizeof(char *) * (c->dpdk_argc + 2)))
+  c->dpdk_argc = 1 + (tas_optidx > argc ? 0 : argc - tas_optidx);
+
+  if ((new_argv = realloc(c->dpdk_argv, sizeof(char *) * c->dpdk_argc))
       == NULL)
   {
     perror("parse_arg_append: alloc failed");
     return -1;
   }
+  c->dpdk_argv = new_argv;
 
-  new[c->dpdk_argc++] = strdup(s);
-  c->dpdk_argv = new;
+  c->dpdk_argv[0] = argv[0];
+  for (i = 0; i < (c->dpdk_argc - 1); i++)
+    c->dpdk_argv[1 + i] = argv[tas_optidx + i];
 
   return 0;
 }
