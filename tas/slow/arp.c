@@ -75,6 +75,23 @@ int arp_init(void)
   if (!config.quiet)
     printf("host ip: %x MAC: %lx\n", config.ip, mac);
 
+  struct config_arp_entry *ae;
+  for (ae = config.arp_entries; ae != NULL; ae = ae->next) {
+    lb = malloc(sizeof(struct arp_entry));
+    assert(lb != NULL);
+    assert(arp_table != NULL);
+
+    lb->status = 0;
+    lb->ip = ae->ip;
+    memcpy(lb->mac, &ae->mac, ETH_ADDR_LEN);
+    lb->compl = NULL;
+
+    lb->next = arp_table;
+    lb->prev = NULL;
+    arp_table->prev = lb;
+    arp_table = lb;
+  }
+
   return 0;
 }
 
