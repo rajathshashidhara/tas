@@ -67,6 +67,8 @@ struct configuration {
   uint32_t ip;
   /** IP prefix length for this host */
   uint8_t ip_prefix;
+  /** List of ARP entries */
+  struct config_arp_entry *arp_entries;
   /** List of routes */
   struct config_route *routes;
   /** Initial ARP timeout in [us] */
@@ -137,6 +139,16 @@ struct configuration {
   char **dpdk_argv;
   /** DPDK extra argument count */
   int dpdk_argc;
+};
+
+/** ARP entry in configuration */
+struct config_arp_entry {
+  /** IP address */
+  uint32_t ip;
+  /** MAC address */
+  uint64_t mac;
+  /** Next pointer for arp list */
+  struct config_arp_entry *next;
 };
 
 /** Route entry in configuration */

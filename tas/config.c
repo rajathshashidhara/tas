@@ -67,6 +67,7 @@ enum cfg_params {
   CP_CC_TIMELY_BETA,
   CP_CC_TIMELY_MINRTT,
   CP_CC_TIMELY_MINRATE,
+  CP_ARP_ENTRY,
   CP_IP_ROUTE,
   CP_IP_ADDR,
   CP_FP_CORES_MAX,
@@ -180,6 +181,9 @@ static struct option opts[] = {
     { .name = "cc-timely-minrate",
       .has_arg = required_argument,
       .val = CP_CC_TIMELY_MINRATE },
+    { .name = "arp-entry",
+      .has_arg = required_argument,
+      .val = CP_ARP_ENTRY },
     { .name = "ip-route",
       .has_arg = required_argument,
       .val = CP_IP_ROUTE },
@@ -232,6 +236,7 @@ static inline int parse_int32(const char *s, uint32_t *pu32);
 static inline int parse_int8(const char *s, uint8_t *pu8);
 static inline int parse_double(const char *s, double *pd);
 static inline int parse_cidr(char *s, uint32_t *ip, uint8_t *prefix);
+static inline int parse_arp_entry(char *s, struct configuration *c);
 static inline int parse_route(char *s, struct configuration *c);
 static inline int parse_arg_append(char *s, struct configuration *c);
 
@@ -450,6 +455,11 @@ int config_parse(struct configuration *c, int argc, char *argv[])
       case CP_CC_TIMELY_MINRATE:
         if (parse_int32(optarg, &c->cc_timely_min_rate) != 0) {
           fprintf(stderr, "cc timely min rate parsing failed\n");
+          goto failed;
+        }
+        break;
+      case CP_ARP_ENTRY:
+        if (parse_arp_entry(optarg, c) != 0) {
           goto failed;
         }
         break;
@@ -676,6 +686,7 @@ static void print_usage(struct configuration *c, char *progname)
       "  --ip-addr=ADDR[/PREFIXLEN]        Set local IP address\n"
       "\n"
       "ARP protocol parameters:\n"
+      "  --arp-entry=IP,MAC          Static ARP entry\n"
       "  --arp-timeout=TIMEOUT       ARP request timeout (us) "
           "[default: %"PRIu32"]\n"
       "  --arp-timeout-max=TIMEOUT   ARP request max timeout (us) "
@@ -777,6 +788,52 @@ static inline int parse_cidr(char *s, uint32_t *ip, uint8_t *prefix)
   }
 
   return 0;
+}
+
+static inline int parse_arp_entry(char *s, struct configuration *c)
+{
+  struct config_arp_entry *ae;
+  char *comma;
+
+  if ((ae = calloc(1, sizeof(*ae))) == NULL) {
+    fprintf(stderr, "parse_arp_entry: alloc failed\n");
+    return -1;
+  }
+
+  /* split mac address from ip */
+  if ((comma = strchr(s, ',')) == NULL) {
+    fprintf(stderr, "parse_arp_etnry: no comma found (%s)\n", s);
+    goto failed;
+  }
+
+  /* parse destination */
+  *comma = 0;
+  if (util_parse_ipv4(s, &ae->ip) != 0) {
+    fprintf(stderr, "parse_arp_entry: parsing ip (%s) failed\n", s);
+    goto failed;
+  }
+
+  /* parse mac address */
+  if (util_parse_mac(comma + 1, &ae->mac) != 0) {
+    fprintf(stderr, "parse_arp_entry: parsing mac (%s) failed\n", comma + 1);
+    goto failed;
+  }
+
+  /* add to arp entry list */
+  ae->next = NULL;
+  if (c->arp_entries == NULL) {
+    c->arp_entries = ae;
+  }
+  else {
+    ae->next = c->arp_entries;
+    c->arp_entries = ae;
+  }
+
+  return 0;
+
+failed:
+  free(ae);
+  return -1;
 }
 
 static inline int parse_route(char *s, struct configuration *c)
