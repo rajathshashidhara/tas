@@ -34,7 +34,7 @@
 #include "fastemu.h"
 #include "tcp_common.h"
 
-#define TCP_MSS 1448
+#define TCP_MSS 1440
 #define TCP_MAX_RTT 100000
 
 //#define SKIP_ACK 1
@@ -880,6 +880,7 @@ static void flow_tx_segment(struct dataplane_context *ctx,
     uint32_t payload_pos, uint32_t ts_echo, uint32_t ts_my, uint8_t fin)
 {
   uint16_t hdrs_len, optlen, fin_fl;
+  uint16_t pad_len = 0;
   struct pkt_tcp *p = network_buf_buf(nbh);
   struct tcp_timestamp_opt *opt_ts;
 
@@ -951,7 +952,11 @@ static void flow_tx_segment(struct dataplane_context *ctx,
   trace_event(FLEXNIC_PL_TREV_TXSEG, sizeof(te_txseg), &te_txseg);
 #endif
 
-  tx_send(ctx, nbh, 0, hdrs_len + payload);
+  if (config.roce_pad) {
+    pad_len = ((0x4 - (payload & 0x3)) & 0x3) + 0x4;
+    memset((uint8_t *) p + hdrs_len + payload, 0, pad_len);
+  }
+  tx_send(ctx, nbh, 0, hdrs_len + payload + pad_len);
 }
 
 static void flow_tx_ack(struct dataplane_context *ctx, uint32_t seq,

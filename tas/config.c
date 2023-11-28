@@ -82,6 +82,7 @@ enum cfg_params {
   CP_READY_FD,
   CP_DPDK_EXTRA,
   CP_QUIET,
+  CP_ROCE_PAD,
 };
 
 static struct option opts[] = {
@@ -226,6 +227,10 @@ static struct option opts[] = {
     { .name = "quiet",
       .has_arg = no_argument,
       .val = CP_QUIET },
+    { .name = "roce-pad",
+      .has_arg = no_argument,
+      .val = CP_ROCE_PAD
+    },
     { .name = NULL },
   };
 
@@ -530,7 +535,10 @@ int config_parse(struct configuration *c, int argc, char *argv[])
         }
         break;
       case CP_QUIET:
-	c->quiet = 1;
+	      c->quiet = 1;
+        break;
+      case CP_ROCE_PAD:
+        c->roce_pad = 1;
         break;
 
       case -1:
