@@ -952,10 +952,11 @@ static void flow_tx_segment(struct dataplane_context *ctx,
   trace_event(FLEXNIC_PL_TREV_TXSEG, sizeof(te_txseg), &te_txseg);
 #endif
 
-  if (config.roce_pad) {
-    pad_len = ((0x4 - (payload & 0x3)) & 0x3) + 0x4;
-    memset((uint8_t *) p + hdrs_len + payload, 0, pad_len);
-  }
+#ifdef ROCE_PAD
+  pad_len = ((0x4 - (payload & 0x3)) & 0x3) + 0x4;
+  memset((uint8_t *) p + hdrs_len + payload, 0, pad_len);
+#endif
+
   tx_send(ctx, nbh, 0, hdrs_len + payload + pad_len);
 }
 
