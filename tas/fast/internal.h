@@ -33,6 +33,7 @@
 
 #define BUFFER_SIZE 2048
 
+#define ROCE_PAD
 //#define FLEXNIC_TRACING
 #ifdef FLEXNIC_TRACING
 #   include <tas_trace.h>

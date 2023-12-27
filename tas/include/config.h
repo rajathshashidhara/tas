@@ -133,8 +133,6 @@ struct configuration {
   int ready_fd;
   /** Minimize output */
   int quiet;
-  /** extra padding */
-  int roce_pad;
   /** DPDK extra argument vector */
   char **dpdk_argv;
   /** DPDK extra argument count */
