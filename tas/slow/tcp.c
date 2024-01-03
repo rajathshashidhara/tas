@@ -464,7 +464,7 @@ void tcp_timeout(struct timeout *to, enum timeout_type type)
   conn_timeout_arm(c, TO_TCP_HANDSHAKE);
 
   /* re-send SYN packet */
-  send_control(c, TCP_SYN | TCP_ECE | TCP_CWR, 1, 0, TCP_MSS);
+  send_control(c, TCP_SYN | TCP_ECE | TCP_CWR, 0, 0, TCP_MSS);
 }
 
 static void conn_packet(struct connection *c, const struct pkt_tcp *p,
@@ -486,20 +486,12 @@ static void conn_packet(struct connection *c, const struct pkt_tcp *p,
     /* handle re-transmitted SYN for dropped SYN-ACK */
     /* TODO: should only do this if we're still waiting for initial ACK,
      * otherwise we should send a challenge ACK */
-    if (opts->ts == NULL) {
-      fprintf(stderr, "conn_packet: re-transmitted SYN does not have TS "
-          "option\n");
-      conn_failed(c, -1);
-      return;
-    }
-
     /* send ECN accepting SYN-ACK */
     if ((c->flags & NICIF_CONN_ECN) == NICIF_CONN_ECN) {
       ecn_flags = TCP_ECE;
     }
 
-    send_control(c, TCP_SYN | TCP_ACK | ecn_flags, 1,
-        f_beui32(opts->ts->ts_val), TCP_MSS);
+    send_control(c, TCP_SYN | TCP_ACK | ecn_flags, 0, 0, TCP_MSS);
   } else if (c->status == CONN_OPEN &&
       (TCPH_FLAGS(&p->tcp) & TCP_SYN) == TCP_SYN)
   {
@@ -509,7 +501,7 @@ static void conn_packet(struct connection *c, const struct pkt_tcp *p,
   {
    /* silently ignore a FIN for an already closed connection: TODO figure out
     * why necessary*/
-    send_control(c, TCP_ACK, 1, 0, 0);
+    send_control(c, TCP_ACK, 0, 0, 0);
   } else {
     fprintf(stderr, "tcp_packet: unexpected connection state %u\n", c->status);
   }
@@ -527,7 +519,7 @@ static int conn_arp_done(struct connection *conn)
   conn_timeout_arm(conn, TO_TCP_HANDSHAKE);
 
   /* send SYN */
-  send_control(conn, TCP_SYN | TCP_ECE | TCP_CWR, 1, 0, TCP_MSS);
+  send_control(conn, TCP_SYN | TCP_ECE | TCP_CWR, 0, 0, TCP_MSS);
 
   CONN_DEBUG0(conn, "SYN SENT\n");
   return 0;
@@ -546,16 +538,11 @@ static int conn_syn_sent_packet(struct connection *c, const struct pkt_tcp *p,
         TCPH_FLAGS(&p->tcp));
     return -1;
   }
-  if (opts->ts == NULL) {
-    fprintf(stderr, "conn_syn_sent_packet: no timestamp option received\n");
-    return -1;
-  }
-
   CONN_DEBUG0(c, "conn_syn_sent_packet: syn-ack received\n");
 
   c->remote_seq = f_beui32(p->tcp.seqno) + 1;
   c->local_seq = f_beui32(p->tcp.ackno);
-  c->syn_ts = f_beui32(opts->ts->ts_val);
+  c->syn_ts = 0;
 
   /* enable ECN if SYN-ACK confirms */
   if (ecn_flags == TCP_ECE) {
@@ -584,7 +571,7 @@ static int conn_syn_sent_packet(struct connection *c, const struct pkt_tcp *p,
   c->status = CONN_OPEN;
 
   /* send ACK */
-  send_control(c, TCP_ACK, 1, c->syn_ts, 0);
+  send_control(c, TCP_ACK, 0, c->syn_ts, 0);
 
   CONN_DEBUG0(c, "conn_syn_sent_packet: ACK sent\n");
 
@@ -604,7 +591,7 @@ static int conn_reg_synack(struct connection *c)
   }
 
   /* send ACK */
-  send_control(c, TCP_SYN | TCP_ACK | ecn_flags, 1, c->syn_ts, TCP_MSS);
+  send_control(c, TCP_SYN | TCP_ACK | ecn_flags, 0, c->syn_ts, TCP_MSS);
 
   appif_accept_conn(c, 0);
 
@@ -908,9 +895,8 @@ static void listener_accept(struct listener *l)
   flow_group = l->backlog_fgs[l->backlog_pos];
   p = (const struct pkt_tcp *) bls->buf;
   ret = parse_options(p, bls->len, &opts);
-  if (ret != 0 || opts.ts == NULL) {
-    fprintf(stderr, "listener_packet: parsing options failed or no timestamp "
-        "option\n");
+  if (ret != 0) {
+    fprintf(stderr, "listener_packet: parsing options failed\n");
     goto out;
   }
 
@@ -925,7 +911,7 @@ static void listener_accept(struct listener *l)
 
   c->remote_seq = f_beui32(p->tcp.seqno) + 1;
   c->local_seq = 1; /* TODO: generate random */
-  c->syn_ts = f_beui32(opts.ts->ts_val);
+  c->syn_ts = 0;
 
   /* check if ECN is offered */
   ecn_flags = TCPH_FLAGS(&p->tcp) & (TCP_ECE | TCP_CWR);
