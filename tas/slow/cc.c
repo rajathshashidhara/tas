@@ -30,7 +30,7 @@
 #include <tas.h>
 #include "internal.h"
 
-#define CONF_MSS 1400
+#define CONF_MSS 800
 
 int cc_init(void)
 {
