@@ -334,6 +334,13 @@ ssize_t tas_sendmsg(int sockfd, const struct msghdr *msg, int flags)
     socket_lock(s);
   }
 
+  /* If blocking, poll atleast once. */
+  if ((s->flags & SOF_NONBLOCK) != SOF_NONBLOCK) {
+    socket_unlock(s);
+    flextcp_sockctx_poll(ctx);
+    socket_lock(s);
+  }
+
 out:
   flextcp_fd_srelease(sockfd, s);
   return ret;
@@ -429,6 +436,13 @@ static inline ssize_t send_simple(int sockfd, const void *buf, size_t len,
       flextcp_context_wait(ctx, -1);
     block = 1;
 
+    flextcp_sockctx_poll(ctx);
+    socket_lock(s);
+  }
+
+  /* If blocking, poll atleast once. */
+  if ((s->flags & SOF_NONBLOCK) != SOF_NONBLOCK) {
+    socket_unlock(s);
     flextcp_sockctx_poll(ctx);
     socket_lock(s);
   }
