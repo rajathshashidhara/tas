@@ -103,22 +103,32 @@ int network_init(unsigned n_threads)
     goto error_exit;
   }
 
-  /* make sure there is only one port */
-#if RTE_VER_YEAR < 18
-  count = rte_eth_dev_count();
-#else
-  count = rte_eth_dev_count_avail();
-#endif
-  if (count == 0) {
-    fprintf(stderr, "No ethernet devices\n");
-    goto error_exit;
-  } else if (count > 1) {
-    fprintf(stderr, "Multiple ethernet devices\n");
-    goto error_exit;
-  }
-
-  RTE_ETH_FOREACH_DEV(p) {
+  if (config.fp_interface != NULL) {
+    /* find port id for interface */
+    if (rte_eth_dev_get_port_by_name(config.fp_interface, &p) != 0) {
+      fprintf(stderr, "rte_eth_dev_get_port_by_name failed\n");
+      goto error_exit;
+    }
     net_port_id = p;
+  }
+  else {
+    /* No interface specified, make sure there is only one. */
+#if RTE_VER_YEAR < 18
+    count = rte_eth_dev_count();
+#else
+    count = rte_eth_dev_count_avail();
+#endif
+    if (count == 0) {
+      fprintf(stderr, "No ethernet devices\n");
+      goto error_exit;
+    } else if (count > 1) {
+      fprintf(stderr, "Multiple ethernet devices\n");
+      goto error_exit;
+    }
+
+    RTE_ETH_FOREACH_DEV(p) {
+      net_port_id = p;
+    }
   }
 
   /* get mac address and device info */

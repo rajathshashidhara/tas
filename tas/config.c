@@ -77,6 +77,7 @@ enum cfg_params {
   CP_FP_VLAN_STRIP,
   CP_FP_POLL_INTERVAL_TAS,
   CP_FP_POLL_INTERVAL_APP,
+  CP_FP_INTERFACE,
   CP_KNI_NAME,
   CP_READY_FD,
   CP_DPDK_EXTRA,
@@ -210,6 +211,9 @@ static struct option opts[] = {
     { .name = "fp-poll-interval-app",
       .has_arg = required_argument,
       .val = CP_FP_POLL_INTERVAL_APP },
+    { .name = "fp-interface",
+      .has_arg = required_argument,
+      .val = CP_FP_INTERFACE },
     { .name = "kni-name",
       .has_arg = required_argument,
       .val = CP_KNI_NAME },
@@ -492,13 +496,19 @@ int config_parse(struct configuration *c, int argc, char *argv[])
           fprintf(stderr, "fp tas poll interval parsing failed\n");
           goto failed;
         }
-       case CP_FP_POLL_INTERVAL_APP:
+        break;
+      case CP_FP_POLL_INTERVAL_APP:
         if (parse_int32(optarg, &c->fp_poll_interval_app) != 0) {
           fprintf(stderr, "fp app poll interval parsing failed\n");
           goto failed;
         }
         break;
-       break;
+      case CP_FP_INTERFACE:
+        if (!(c->fp_interface = strdup(optarg))) {
+          fprintf(stderr, "strdup fp interface failed\n");
+          goto failed;
+        }
+        break;
 
       case CP_KNI_NAME:
         if (!(c->kni_name = strdup(optarg))) {
@@ -592,6 +602,7 @@ static int config_defaults(struct configuration *c, char *progname)
   c->fp_vlan_strip = 0;
   c->fp_poll_interval_tas = 10000;
   c->fp_poll_interval_app = 10000;
+  c->fp_interface = NULL;
   c->kni_name = NULL;
   c->ready_fd = -1;
   c->quiet = 0;
@@ -696,6 +707,7 @@ static void print_usage(struct configuration *c, char *progname)
           "in us [default: %"PRIu32"]\n"
       "  --fp-poll-interval-app      App polling interval before blocking "
           "in us [default: %"PRIu32"]\n"
+      "  --fp-interface              PCIe address (Domain:Bus:Device.Function), for example- 0000:2:00.0\n"
       "  --dpdk-extra=ARG            Add extra DPDK argument\n"
       "\n"
       "Host kernel interface:\n"
