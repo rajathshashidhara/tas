@@ -143,11 +143,11 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
   avail = tcp_txavail(fs, NULL);
 
 #if PL_DEBUG_ATX
-  fprintf(stderr, "ATX try_sendseg local=%08x:%05u remote=%08x:%05u "
-      "tx_avail=%x tx_next_pos=%x avail=%u\n",
+  fprintf(stderr, "[%u] ATX try_sendseg local=%08x:%05u remote=%08x:%05u "
+      "tx_avail=%x tx_next_pos=%x avail=%u tx_next_seq=%u tx_sent=%u\n", ts,
       f_beui32(fs->local_ip), f_beui16(fs->local_port),
       f_beui32(fs->remote_ip), f_beui16(fs->remote_port),
-      fs->tx_avail, fs->tx_next_pos, avail);
+      fs->tx_avail, fs->tx_next_pos, avail, fs->tx_next_seq, fs->tx_sent);
 #endif
 #ifdef FLEXNIC_TRACING
   struct flextcp_pl_trev_afloqman te_afloqman = {
@@ -296,11 +296,11 @@ int fast_flows_packet(struct dataplane_context *ctx,
   orig_payload = payload_bytes;
 
 #if PL_DEBUG_ARX
-  fprintf(stderr, "FLOW local=%08x:%05u remote=%08x:%05u  RX: seq=%u ack=%u "
-      "flags=%x payload=%u\n",
+  fprintf(stderr, "[%u] FLOW local=%08x:%05u remote=%08x:%05u  RX: seq=%u ack=%u "
+      "flags=%x payload=%u window=%u\n", ts,
       f_beui32(p->ip.dest), f_beui16(p->tcp.dest),
       f_beui32(p->ip.src), f_beui16(p->tcp.src), f_beui32(p->tcp.seqno),
-      f_beui32(p->tcp.ackno), TCPH_FLAGS(&p->tcp), payload_bytes);
+      f_beui32(p->tcp.ackno), TCPH_FLAGS(&p->tcp), payload_bytes, f_beui16(p->tcp.wnd));
 #endif
 
   fs_lock(fs);
@@ -330,13 +330,13 @@ int fast_flows_packet(struct dataplane_context *ctx,
 #endif
 
 #if PL_DEBUG_ARX
-  fprintf(stderr, "FLOW local=%08x:%05u remote=%08x:%05u  ST: op=%"PRIx64
+  fprintf(stderr, "[%u] FLOW local=%08x:%05u remote=%08x:%05u  ST: op=%"PRIx64
       " rx_pos=%x rx_next_seq=%u rx_avail=%x  tx_pos=%x tx_next_seq=%u"
-      " tx_sent=%u sp=%u\n",
+      " tx_sent=%u rx_remote_avail=%u\n", ts,
       f_beui32(p->ip.dest), f_beui16(p->tcp.dest),
       f_beui32(p->ip.src), f_beui16(p->tcp.src), fs->opaque, fs->rx_next_pos,
       fs->rx_next_seq, fs->rx_avail, fs->tx_next_pos, fs->tx_next_seq,
-      fs->tx_sent, fs->slowpath);
+      fs->tx_sent, fs->rx_remote_avail);
 #endif
 
   /* state indicates slow path */
@@ -566,10 +566,6 @@ unlock:
   /* if we bumped at least one, then we need to add a notification to the
    * queue */
   if (LIKELY(rx_bump != 0 || tx_bump != 0 || fin_bump)) {
-#if PL_DEBUG_ARX
-    fprintf(stderr, "dma_krx_pkt_fastpath: updating application state\n");
-#endif
-
     uint16_t type;
     type = FLEXTCP_PL_ARX_CONNUPDATE;
 
@@ -707,7 +703,7 @@ int fast_flows_bump(struct dataplane_context *ctx, uint32_t flow_id,
     goto unlock;
   }
   /* validate rx bump */
-  if (rx_bump > fs->rx_len || rx_bump + fs->rx_avail > fs->tx_len) {
+  if (rx_bump > fs->rx_len || rx_bump + fs->rx_avail > fs->rx_len) {
     fprintf(stderr, "fast_flows_bump: rx bump too large\n");
     goto unlock;
   }
