@@ -31,6 +31,14 @@
 #include <rte_malloc.h>
 #include <rte_cycles.h>
 
+// #define PKT_DROP
+#ifdef PKT_DROP
+
+#include <rte_random.h>
+#define DROP_PROB_BASE 256ull // (1/x) probability of drop
+
+#endif  /* PKT_DROP */
+
 #include <tas_memif.h>
 
 #include "internal.h"
@@ -283,6 +291,25 @@ static unsigned poll_rx(struct dataplane_context *ctx, uint32_t ts,
     rte_prefetch0(network_buf_bufoff(bhs[i]));
   }
 
+#ifdef PKT_DROP
+  /* drop packets randomly */
+  unsigned k;
+  for (i = 0; i < n; i++) {
+    if (UNLIKELY((rte_rand() % DROP_PROB_BASE) == 0)) {
+      bufcache_free(ctx, bhs[i]);
+      bhs[i] = NULL;
+    }
+  }
+  k = 0;
+  for (i = 0; i < n; i++) {
+    if (bhs[i] == NULL)
+      continue;
+
+    bhs[k++] = bhs[i];
+  }
+  n = k;
+#endif  /* PKT_DROP */
+
   /* look up flow states */
   fast_flows_packet_fss(ctx, bhs, fss, n);
 
@@ -392,7 +419,7 @@ static unsigned poll_kernel(struct dataplane_context *ctx, uint32_t ts)
 
   for (k = 0; k < max;) {
     ret = fast_kernel_poll(ctx, handles[k], ts);
- 
+
     if (ret == 0)
       k++;
     else if (ret < 0)
@@ -549,6 +576,25 @@ static inline void tx_flush(struct dataplane_context *ctx)
   if (ctx->tx_num == 0) {
     return;
   }
+
+#ifdef PKT_DROP
+  /* drop packets randomly */
+  unsigned k;
+  for (i = 0; i < ctx->tx_num; i++) {
+    if (UNLIKELY((rte_rand() % DROP_PROB_BASE) == 0)) {
+      bufcache_free(ctx, ctx->tx_handles[i]);
+      ctx->tx_handles[i] = NULL;
+    }
+  }
+  k = 0;
+  for (i = 0; i < ctx->tx_num; i++) {
+    if (ctx->tx_handles[i] == NULL)
+      continue;
+
+    ctx->tx_handles[k++] = ctx->tx_handles[i];
+  }
+  ctx->tx_num = k;
+#endif
 
   /* try to send out packets */
   ret = network_send(&ctx->net, ctx->tx_num, ctx->tx_handles);
