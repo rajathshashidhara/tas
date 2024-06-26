@@ -373,7 +373,7 @@ void nicif_tx_send(uint32_t opaque, int no_ts)
   MEM_BARRIER();
   ktx->type = (!no_ts ? FLEXTCP_PL_KTX_PACKET : FLEXTCP_PL_KTX_PACKET_NOTS);
   txq_tail[0] = opaque;
-  
+
   notify_fastpath_core(0);
 }
 

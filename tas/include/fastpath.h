@@ -33,8 +33,8 @@
 #include <tas_memif.h>
 #include <utils_rng.h>
 
-#define BATCH_SIZE 16
-#define BUFCACHE_SIZE 128
+#define BATCH_SIZE 32
+#define BUFCACHE_SIZE 1024
 #define TXBUF_SIZE (2 * BATCH_SIZE)
 
 

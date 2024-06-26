@@ -572,15 +572,15 @@ failed:
 static int config_defaults(struct configuration *c, char *progname)
 {
   c->ip = 0;
-  c->shm_len = 1024 * 1024 * 1024;
+  c->shm_len = 4 * 1024 * 1024 * 1024ull;
   c->nic_rx_len = 16 * 1024;
   c->nic_tx_len = 16 * 1024;
   c->app_kin_len = 1024 * 1024;
   c->app_kout_len = 1024 * 1024;
   c->arp_to = 500;
   c->arp_to_max = 10000000;
-  c->tcp_rtt_init = 50;
-  c->tcp_link_bw = 10;
+  c->tcp_rtt_init = 10;
+  c->tcp_link_bw = 100;
   c->tcp_rxbuf_len = 8192;
   c->tcp_txbuf_len = 8192;
   c->tcp_handshake_to = 10000;
