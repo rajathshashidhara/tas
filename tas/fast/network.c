@@ -190,6 +190,9 @@ int network_init(unsigned n_threads)
 
   memcpy(&tas_info->mac_address, &eth_addr, 6);
 
+  if (rte_eth_stats_reset(net_port_id) != 0)
+    goto error_exit;
+
   return 0;
 
 error_exit:
@@ -206,7 +209,7 @@ void network_cleanup(void)
 void network_dump_stats(void)
 {
   struct rte_eth_stats stats;
-  if (rte_eth_stats_get(0, &stats) == 0) {
+  if (rte_eth_stats_get(net_port_id, &stats) == 0) {
     fprintf(stderr, "network stats: ipackets=%"PRIu64" opackets=%"PRIu64
         " ibytes=%"PRIu64" obytes=%"PRIu64" imissed=%"PRIu64" ierrors=%"PRIu64
         " oerrors=%"PRIu64" rx_nombuf=%"PRIu64"\n", stats.ipackets,
