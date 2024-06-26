@@ -106,7 +106,9 @@ ssize_t tas_recvmsg(int sockfd, struct msghdr *msg, int flags)
     off = 0;
     if (s->data.connection.rx_len_1 <= iov[i].iov_len) {
       off = s->data.connection.rx_len_1;
+#ifndef NO_COPY
       memcpy(iov[i].iov_base, s->data.connection.rx_buf_1, off);
+#endif
       ret += off;
 
       s->data.connection.rx_buf_1 = s->data.connection.rx_buf_2;
@@ -116,7 +118,9 @@ ssize_t tas_recvmsg(int sockfd, struct msghdr *msg, int flags)
     }
 
     len = MIN(iov[i].iov_len - off, s->data.connection.rx_len_1);
+#ifndef NO_COPY
     memcpy((uint8_t *) iov[i].iov_base + off, s->data.connection.rx_buf_1, len);
+#endif
     ret += len;
 
     s->data.connection.rx_buf_1 = (uint8_t *) s->data.connection.rx_buf_1 + len;
@@ -197,7 +201,9 @@ static inline ssize_t recv_simple(int sockfd, void *buf, size_t len, int flags)
   /* copy to provided buffer */
   off = 0;
   if (s->data.connection.rx_len_1 <= len) {
+#ifndef NO_COPY
     memcpy(buf, s->data.connection.rx_buf_1, s->data.connection.rx_len_1);
+#endif
     ret = off = s->data.connection.rx_len_1;
 
     s->data.connection.rx_buf_1 = s->data.connection.rx_buf_2;
@@ -206,7 +212,9 @@ static inline ssize_t recv_simple(int sockfd, void *buf, size_t len, int flags)
     s->data.connection.rx_len_2 = 0;
   }
   len_2 = MIN(s->data.connection.rx_len_1, len - off);
+#ifndef NO_COPY
   memcpy((uint8_t *) buf + ret, s->data.connection.rx_buf_1, len_2);
+#endif
   ret += len_2;
   s->data.connection.rx_buf_1 += len_2;
   s->data.connection.rx_len_1 -= len_2;
@@ -424,8 +432,10 @@ static inline ssize_t send_simple(int sockfd, const void *buf, size_t len,
   len_2 = ret - len_1;
 
   /* copy into TX buffer */
+#ifndef NO_COPY
   memcpy(dst_1, buf, len_1);
   memcpy(dst_2, (const uint8_t *) buf + len_1, len_2);
+#endif
 
   /* send out */
   /* TODO: this should not block for non-blocking sockets */

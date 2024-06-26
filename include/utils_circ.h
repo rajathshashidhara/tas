@@ -113,15 +113,21 @@ static inline void split_write(const void *src, size_t len, void *buf_1,
   assert(len + off <= len_1 + len_2);
   if (off + len <= len_1) {
     /* only in first half */
+#ifndef NO_COPY
     memcpy((uint8_t *) buf_1 + off, src, len);
+#endif
   } else if (off >= len_1) {
     /* only in second half */
+#ifndef NO_COPY
     memcpy((uint8_t *) buf_2 + (off - len_1), src, len);
+#endif
   } else {
     /* spread over both halves */
     l = len_1 - off;
+#ifndef NO_COPY
     memcpy((uint8_t *) buf_1 + off, src, l);
     memcpy(buf_2, (const uint8_t *) src + l, len - l);
+#endif
   }
 }
 
