@@ -142,6 +142,9 @@ int slowpath_main(void)
         printf("stats: drops=%"PRIu64" k_rexmit=%"PRIu64" ecn=%"PRIu64" acks=%"
             PRIu64"\n", kstats.drops, kstats.kernel_rexmit, kstats.ecn_marked,
             kstats.acks);
+#ifdef DATAPLANE_STATS
+        dataplane_dump_stats();
+#endif
         fflush(stdout);
       }
       last_print = cur_ts;
