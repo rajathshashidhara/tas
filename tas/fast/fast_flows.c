@@ -972,10 +972,12 @@ static void flow_tx_ack(struct dataplane_context *ctx, uint32_t seq,
 {
   struct pkt_tcp *p;
   struct eth_addr eth;
+  uint16_t pad_len = 0;
   ip_addr_t ip;
   beui16_t port;
   uint16_t hdrlen;
   uint16_t ecn_flags = 0;
+  uint16_t payload = 0;
 
   p = network_buf_bufoff(nbh);
 
@@ -1038,7 +1040,12 @@ static void flow_tx_ack(struct dataplane_context *ctx, uint32_t seq,
   trace_event(FLEXNIC_PL_TREV_TXACK, sizeof(te_txack), &te_txack);
 #endif
 
-  tx_send(ctx, nbh, network_buf_off(nbh), hdrlen);
+#ifdef ROCE_PAD
+  pad_len = ((0x4 - (payload & 0x3)) & 0x3) + 0x4;
+  memset((uint8_t *) p + hdrlen + payload, 0, pad_len);
+#endif
+
+  tx_send(ctx, nbh, network_buf_off(nbh), hdrlen + payload + pad_len);
 }
 
 static void flow_reset_retransmit(struct flextcp_pl_flowst *fs)
