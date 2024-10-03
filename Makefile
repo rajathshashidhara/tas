@@ -14,8 +14,9 @@ LDLIBS += -lm -lpthread -lrt -ldl
 LDLIBS += $(EXTRA_LDLIBS)
 
 PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
 SBINDIR ?= $(PREFIX)/sbin
-LIBDIR ?= $(PREFIX)/lib
+LIBDIR ?= $(PREFIX)/lib/x86_64-linux-gnu
 INCDIR ?= $(PREFIX)/include
 
 
@@ -97,20 +98,27 @@ distclean:
 
 install: tas/tas lib/libtas_sockets.so lib/libtas_interpose.so \
   lib/libtas.so tools/statetool
-	mkdir -p $(DESTDIR)$(SBINDIR)
-	cp tas/tas $(DESTDIR)$(SBINDIR)/tas
-	cp tools/statetool $(DESTDIR)$(SBINDIR)/tas-statetool
+	mkdir -p $(DESTDIR)$(BINDIR)
+	cp tas/tas $(DESTDIR)$(BINDIR)/tas-network-stack
+	cp tools/statetool $(DESTDIR)$(BINDIR)/tas-statetool
 	mkdir -p $(DESTDIR)$(LIBDIR)
 	cp lib/libtas_interpose.so $(DESTDIR)$(LIBDIR)/libtas_interpose.so
 	cp lib/libtas_sockets.so $(DESTDIR)$(LIBDIR)/libtas_sockets.so
 	cp lib/libtas.so $(DESTDIR)$(LIBDIR)/libtas.so
+	mkdir -p $(DESTDIR)$(INCDIR)
+	cp lib/tas/include/tas_ll.h $(DESTDIR)$(INCDIR)/tas_ll.h
+	cp lib/tas/include/tas_ll_connect.h $(DESTDIR)$(INCDIR)/tas_ll_connect.h
+	cp lib/sockets/include/tas_sockets.h $(DESTDIR)$(INCDIR)/tas_sockets.h
 
 uninstall:
-	rm -f $(DESTDIR)$(SBINDIR)/tas
-	rm -f $(DESTDIR)$(SBINDIR)/tas-statetool
+	rm -f $(DESTDIR)$(BINDIR)/tas-network-stack
+	rm -f $(DESTDIR)$(BINDIR)/tas-statetool
 	rm -f $(DESTDIR)$(LIBDIR)/libtas_interpose.so
 	rm -f $(DESTDIR)$(LIBDIR)/libtas_sockets.so
 	rm -f $(DESTDIR)$(LIBDIR)/libtas.so
+	rm -f $(DESTDIR)$(INCDIR)/tas_ll.h
+	rm -f $(DESTDIR)$(INCDIR)/tas_ll_connect.h
+	rm -f $(DESTDIR)$(INCDIR)/tas_sockets.h
 
 
 .DEFAULT_GOAL := all
