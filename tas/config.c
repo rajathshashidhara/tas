@@ -214,9 +214,6 @@ static struct option opts[] = {
     { .name = "fp-interface",
       .has_arg = required_argument,
       .val = CP_FP_INTERFACE },
-    { .name = "kni-name",
-      .has_arg = required_argument,
-      .val = CP_KNI_NAME },
     { .name = "ready-fd",
       .has_arg = required_argument,
       .val = CP_READY_FD },
@@ -510,13 +507,6 @@ int config_parse(struct configuration *c, int argc, char *argv[])
         }
         break;
 
-      case CP_KNI_NAME:
-        if (!(c->kni_name = strdup(optarg))) {
-          fprintf(stderr, "strdup kni name failed\n");
-          goto failed;
-        }
-        break;
-
       case CP_READY_FD:
         if (parse_int32(optarg, &i) != 0) {
           fprintf(stderr, "read fd parsing failed\n");
@@ -603,7 +593,6 @@ static int config_defaults(struct configuration *c, char *progname)
   c->fp_poll_interval_tas = 10000;
   c->fp_poll_interval_app = 10000;
   c->fp_interface = NULL;
-  c->kni_name = NULL;
   c->ready_fd = -1;
   c->quiet = 0;
 
@@ -709,10 +698,6 @@ static void print_usage(struct configuration *c, char *progname)
           "in us [default: %"PRIu32"]\n"
       "  --fp-interface              PCIe address (Domain:Bus:Device.Function), for example- 0000:2:00.0\n"
       "  --dpdk-extra=ARG            Add extra DPDK argument\n"
-      "\n"
-      "Host kernel interface:\n"
-      "  --kni-name=NAME             Network interface name to expose "
-          "[default: disabled]\n"
       "\n"
       "Miscelaneous:\n"
       "  --quiet                     Disable non-essential logging "

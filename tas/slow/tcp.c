@@ -381,8 +381,7 @@ int tcp_packet(const void *pkt, uint16_t len, uint32_t fn_core,
     ret = -1;
 
     /* send reset if the packet received wasn't a reset */
-    if (!(TCPH_FLAGS(&p->tcp) & TCP_RST) &&
-        config.kni_name == NULL)
+    if (!(TCPH_FLAGS(&p->tcp) & TCP_RST))
       send_reset(p, &opts);
   }
 

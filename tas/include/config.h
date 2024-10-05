@@ -129,8 +129,6 @@ struct configuration {
   uint32_t fp_poll_interval_app;
   /** FP: interface name */
   char *fp_interface;
-  /** SP: kni interface name */
-  char *kni_name;
   /** Ready signal fd */
   int ready_fd;
   /** Minimize output */
