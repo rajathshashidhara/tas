@@ -33,7 +33,8 @@ DPDK_CPPFLAGS += -I$(RTE_SDK)/include -I$(RTE_SDK)/include/dpdk \
 DPDK_LDFLAGS+= -L$(RTE_SDK)/lib/x86_64-linux-gnu/
 DPDK_LDLIBS+= \
   -Wl,--whole-archive \
-  $(addprefix -lrte_pmd_,$(DPDK_PMDS)) \
+  -Wl,-Bstatic \
+  $(addprefix -lrte_net_,$(DPDK_PMDS)) \
   -lrte_eal \
   -lrte_mempool \
   -lrte_mempool_ring \
@@ -49,12 +50,19 @@ DPDK_LDLIBS+= \
   -lrte_cmdline \
   -lrte_timer \
   -lrte_net \
-  -lrte_kni \
   -lrte_bus_vdev \
   -lrte_gso \
+  -lrte_telemetry \
+  -lrte_log \
+  -lrte_common_mlx5 \
+  -lrte_rcu \
+  -lrte_security \
+  -lrte_cryptodev \
+  -lrte_bus_auxiliary \
+  -Wl,-Bdynamic \
   -Wl,--no-whole-archive \
   -ldl -lbsd \
-  -libverbs -lmlx5 \
+  -libverbs -lmlx5 -lm\
   $(EXTRA_LIBS_DPDK)
 
 
