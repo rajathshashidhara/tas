@@ -31,7 +31,7 @@
 #include <rte_config.h>
 #include <rte_ether.h>
 
-#define BUFFER_SIZE 2048
+#define BUFFER_SIZE (2048 + 1024)
 
 #define ROCE_PAD
 //#define FLEXNIC_TRACING
