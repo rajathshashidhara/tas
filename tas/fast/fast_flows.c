@@ -34,7 +34,6 @@
 #include "fastemu.h"
 #include "tcp_common.h"
 
-#define TCP_MSS 1440
 #define TCP_MAX_RTT 100000
 
 //#define SKIP_ACK 1
@@ -167,7 +166,7 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
     ret = -1;
     goto unlock;
   }
-  len = MIN(avail, TCP_MSS);
+  len = MIN(avail, config.tcp_mss);
 
   /* state snapshot for creating segment */
   tx_seq = fs->tx_next_seq;
@@ -214,7 +213,7 @@ int fast_flows_qman_fwd(struct dataplane_context *ctx,
   avail = tcp_txavail(fs, NULL);
 
   /* re-arm queue manager */
-  if (qman_set(&ctx->qman, flow_id, fs->tx_rate, avail, TCP_MSS,
+  if (qman_set(&ctx->qman, flow_id, fs->tx_rate, avail, config.tcp_mss,
         QMAN_SET_RATE | QMAN_SET_MAXCHUNK | QMAN_SET_AVAIL) != 0)
   {
     fprintf(stderr, "fast_flows_qman_fwd: qman_set failed, UNEXPECTED\n");
@@ -620,7 +619,7 @@ unlock:
   if (new_avail > old_avail) {
     /* update qman queue */
     if (qman_set(&ctx->qman, flow_id, fs->tx_rate, new_avail -
-          old_avail, TCP_MSS, QMAN_SET_RATE | QMAN_SET_MAXCHUNK
+          old_avail, config.tcp_mss, QMAN_SET_RATE | QMAN_SET_MAXCHUNK
           | QMAN_ADD_AVAIL) != 0)
     {
       fprintf(stderr, "fast_flows_packet: qman_set 1 failed, UNEXPECTED\n");
@@ -741,7 +740,7 @@ int fast_flows_bump(struct dataplane_context *ctx, uint32_t flow_id,
   /* update queue manager queue */
   if (old_avail < new_avail) {
     if (qman_set(&ctx->qman, flow_id, fs->tx_rate, new_avail -
-          old_avail, TCP_MSS, QMAN_SET_RATE | QMAN_SET_MAXCHUNK
+          old_avail, config.tcp_mss, QMAN_SET_RATE | QMAN_SET_MAXCHUNK
           | QMAN_ADD_AVAIL) != 0)
     {
       fprintf(stderr, "flast_flows_bump: qman_set 1 failed, UNEXPECTED\n");
@@ -818,7 +817,7 @@ void fast_flows_retransmit(struct dataplane_context *ctx, uint32_t flow_id)
   /* update queue manager */
   if (new_avail > old_avail) {
     if (qman_set(&ctx->qman, flow_id, fs->tx_rate, new_avail - old_avail,
-          TCP_MSS, QMAN_SET_RATE | QMAN_SET_MAXCHUNK | QMAN_ADD_AVAIL) != 0)
+          config.tcp_mss, QMAN_SET_RATE | QMAN_SET_MAXCHUNK | QMAN_ADD_AVAIL) != 0)
     {
       fprintf(stderr, "flast_flows_bump: qman_set 1 failed, UNEXPECTED\n");
       abort();

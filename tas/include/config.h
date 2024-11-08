@@ -63,6 +63,8 @@ struct configuration {
   uint32_t tcp_handshake_to;
   /** # of retries for dropped handshake packets */
   uint32_t tcp_handshake_retries;
+  /** Maximum Segment Size (MSS) */
+  uint32_t tcp_mss;
   /** IP address for this host */
   uint32_t ip;
   /** IP prefix length for this host */

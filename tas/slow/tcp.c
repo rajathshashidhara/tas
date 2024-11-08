@@ -38,7 +38,6 @@
 #include <utils_rng.h>
 #include "internal.h"
 
-#define TCP_MSS 1460
 #define TCP_HTSIZE 4096
 
 #define PORT_MAX ((1u << 16) - 1)
@@ -463,7 +462,7 @@ void tcp_timeout(struct timeout *to, enum timeout_type type)
   conn_timeout_arm(c, TO_TCP_HANDSHAKE);
 
   /* re-send SYN packet */
-  send_control(c, TCP_SYN | TCP_ECE | TCP_CWR, 1, 0, TCP_MSS);
+  send_control(c, TCP_SYN | TCP_ECE | TCP_CWR, 1, 0, config.tcp_mss);
 }
 
 static void conn_packet(struct connection *c, const struct pkt_tcp *p,
@@ -498,7 +497,7 @@ static void conn_packet(struct connection *c, const struct pkt_tcp *p,
     }
 
     send_control(c, TCP_SYN | TCP_ACK | ecn_flags, 1,
-        f_beui32(opts->ts->ts_val), TCP_MSS);
+        f_beui32(opts->ts->ts_val), config.tcp_mss);
   } else if (c->status == CONN_OPEN &&
       (TCPH_FLAGS(&p->tcp) & TCP_SYN) == TCP_SYN)
   {
@@ -526,7 +525,7 @@ static int conn_arp_done(struct connection *conn)
   conn_timeout_arm(conn, TO_TCP_HANDSHAKE);
 
   /* send SYN */
-  send_control(conn, TCP_SYN | TCP_ECE | TCP_CWR, 1, 0, TCP_MSS);
+  send_control(conn, TCP_SYN | TCP_ECE | TCP_CWR, 1, 0, config.tcp_mss);
 
   CONN_DEBUG0(conn, "SYN SENT\n");
   return 0;
@@ -603,7 +602,7 @@ static int conn_reg_synack(struct connection *c)
   }
 
   /* send ACK */
-  send_control(c, TCP_SYN | TCP_ACK | ecn_flags, 1, c->syn_ts, TCP_MSS);
+  send_control(c, TCP_SYN | TCP_ACK | ecn_flags, 1, c->syn_ts, config.tcp_mss);
 
   appif_accept_conn(c, 0);
 

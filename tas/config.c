@@ -48,6 +48,7 @@ enum cfg_params {
   CP_TCP_TXBUF_LEN,
   CP_TCP_HANDSHAKE_TO,
   CP_TCP_HANDSHAKE_RETRIES,
+  CP_TCP_MSS,
   CP_CC,
   CP_CC_CONTROL_GRANULARITY,
   CP_CC_CONTROL_INTERVAL,
@@ -124,6 +125,9 @@ static struct option opts[] = {
     { .name = "tcp-handshake-retries",
       .has_arg = required_argument,
       .val = CP_TCP_HANDSHAKE_RETRIES },
+    { .name = "tcp-mss",
+      .has_arg = required_argument,
+      .val = CP_TCP_MSS },
     { .name = "cc",
       .has_arg = required_argument,
       .val = CP_CC },
@@ -325,6 +329,12 @@ int config_parse(struct configuration *c, int argc, char *argv[])
       case CP_TCP_HANDSHAKE_RETRIES:
         if (parse_int32(optarg, &c->tcp_handshake_retries) != 0) {
           fprintf(stderr, "tcp handshake retries parsing failed\n");
+          goto failed;
+        }
+        break;
+      case CP_TCP_MSS:
+        if (parse_int32(optarg, &c->tcp_mss) != 0) {
+          fprintf(stderr, "tcp mss parsing failed\n");
           goto failed;
         }
         break;
@@ -565,6 +575,7 @@ static int config_defaults(struct configuration *c, char *progname)
   c->tcp_txbuf_len = 8192;
   c->tcp_handshake_to = 10000;
   c->tcp_handshake_retries = 10;
+  c->tcp_mss = 1448;
   c->cc_algorithm = CONFIG_CC_DCTCP_RATE;
   c->cc_control_granularity = 50;
   c->cc_control_interval = 2;
