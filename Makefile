@@ -5,7 +5,7 @@
 
 CPPFLAGS += -Iinclude/
 CPPFLAGS += $(EXTRA_CPPFLAGS)
-CFLAGS += -std=gnu99 -O3 -g -Wall -Werror -Wno-deprecated-declarations -Wno-address-of-packed-member -march=native -fno-omit-frame-pointer
+CFLAGS += -std=gnu99 -O3 -g -Wall -Werror -Wno-deprecated-declarations -Wno-address-of-packed-member -march=native -fno-omit-frame-pointer -DNO_COPY
 CFLAGS += $(EXTRA_CFLAGS)
 CFLAGS_SHARED += $(CFLAGS) -fPIC
 LDFLAGS += -pthread -g
@@ -107,11 +107,11 @@ distclean:
 install: tas/tas lib/libtas_sockets.so lib/libtas_interpose.so \
   lib/libtas.so tools/statetool
 	mkdir -p $(DESTDIR)$(BINDIR)
-	cp tas/tas $(DESTDIR)$(BINDIR)/tas-network-stack
+	cp tas/tas $(DESTDIR)$(BINDIR)/tas-network-stack-nocopy
 	cp tools/statetool $(DESTDIR)$(BINDIR)/tas-statetool
 	mkdir -p $(DESTDIR)$(LIBDIR)
-	cp lib/libtas_interpose.so $(DESTDIR)$(LIBDIR)/libtas_interpose.so
-	cp lib/libtas_sockets.so $(DESTDIR)$(LIBDIR)/libtas_sockets.so
+	cp lib/libtas_interpose.so $(DESTDIR)$(LIBDIR)/libtas_interpose_nocopy.so
+	cp lib/libtas_sockets.so $(DESTDIR)$(LIBDIR)/libtas_sockets_nocopy.so
 	cp lib/libtas.so $(DESTDIR)$(LIBDIR)/libtas.so
 	mkdir -p $(DESTDIR)$(INCDIR)
 	cp lib/tas/include/tas_ll.h $(DESTDIR)$(INCDIR)/tas_ll.h
@@ -119,10 +119,10 @@ install: tas/tas lib/libtas_sockets.so lib/libtas_interpose.so \
 	cp lib/sockets/include/tas_sockets.h $(DESTDIR)$(INCDIR)/tas_sockets.h
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/tas-network-stack
+	rm -f $(DESTDIR)$(BINDIR)/tas-network-stack-nocopy
 	rm -f $(DESTDIR)$(BINDIR)/tas-statetool
-	rm -f $(DESTDIR)$(LIBDIR)/libtas_interpose.so
-	rm -f $(DESTDIR)$(LIBDIR)/libtas_sockets.so
+	rm -f $(DESTDIR)$(LIBDIR)/libtas_interpose_nocopy.so
+	rm -f $(DESTDIR)$(LIBDIR)/libtas_sockets_nocopy.so
 	rm -f $(DESTDIR)$(LIBDIR)/libtas.so
 	rm -f $(DESTDIR)$(INCDIR)/tas_ll.h
 	rm -f $(DESTDIR)$(INCDIR)/tas_ll_connect.h

@@ -836,12 +836,18 @@ static void flow_tx_read(struct flextcp_pl_flowst *fs, uint32_t pos,
 {
   uint32_t part;
 
+  (void) part;
+
   if (LIKELY(pos + len <= fs->tx_len)) {
+#ifndef NO_COPY
     dma_read(fs->tx_base + pos, len, dst);
+#endif
   } else {
     part = fs->tx_len - pos;
+#ifndef NO_COPY
     dma_read(fs->tx_base + pos, part, dst);
     dma_read(fs->tx_base, len - part, (uint8_t *) dst + part);
+#endif
   }
 }
 
@@ -852,12 +858,19 @@ static void flow_rx_write(struct flextcp_pl_flowst *fs, uint32_t pos,
   uint32_t part;
   uint64_t rx_base = fs->rx_base_sp & FLEXNIC_PL_FLOWST_RX_MASK;
 
+  (void) part;
+  (void) rx_base;
+
   if (LIKELY(pos + len <= fs->rx_len)) {
+#ifndef NO_COPY
     dma_write(rx_base + pos, len, src);
+#endif
   } else {
     part = fs->rx_len - pos;
+#ifndef NO_COPY
     dma_write(rx_base + pos, part, src);
     dma_write(rx_base, len - part, (const uint8_t *) src + part);
+#endif
   }
 }
 
