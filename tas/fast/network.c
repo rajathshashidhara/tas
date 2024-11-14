@@ -42,10 +42,10 @@
 #include <tas_memif.h>
 #include "internal.h"
 
-#define PERTHREAD_MBUFS 2048
+#define PERTHREAD_MBUFS 8192
 #define MBUF_SIZE (BUFFER_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
-#define RX_DESCRIPTORS 256
-#define TX_DESCRIPTORS 128
+#define RX_DESCRIPTORS 2048
+#define TX_DESCRIPTORS 1024
 
 uint8_t net_port_id = 0;
 static struct rte_eth_conf port_conf = {
