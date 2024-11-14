@@ -80,6 +80,9 @@ enum cfg_params {
   CP_FP_POLL_INTERVAL_TAS,
   CP_FP_POLL_INTERVAL_APP,
   CP_FP_INTERFACE,
+  CP_FP_PER_THREAD_MBUFS,
+  CP_FP_RX_DESC,
+  CP_FP_TX_DESC,
   CP_KNI_NAME,
   CP_READY_FD,
   CP_DPDK_EXTRA,
@@ -222,6 +225,15 @@ static struct option opts[] = {
     { .name = "fp-interface",
       .has_arg = required_argument,
       .val = CP_FP_INTERFACE },
+    { .name = "fp-per-thread-mbufs",
+      .has_arg = required_argument,
+      .val = CP_FP_PER_THREAD_MBUFS},
+    { .name = "fp-rx-desc",
+      .has_arg = required_argument,
+      .val = CP_FP_RX_DESC},
+    { .name = "fp-tx-desc",
+      .has_arg = required_argument,
+      .val = CP_FP_TX_DESC},
     { .name = "ready-fd",
       .has_arg = required_argument,
       .val = CP_READY_FD },
@@ -526,6 +538,24 @@ int config_parse(struct configuration *c, int argc, char *argv[])
           goto failed;
         }
         break;
+      case CP_FP_PER_THREAD_MBUFS:
+        if (parse_int32(optarg, &c->fp_per_thread_mbufs)) {
+          fprintf(stderr, "fp per thread mbufs parsing failed\n");
+          goto failed;
+        }
+        break;
+      case CP_FP_RX_DESC:
+        if (parse_int32(optarg, &c->fp_rx_desc)) {
+          fprintf(stderr, "fp rx descriptors parsing failed\n");
+          goto failed;
+        }
+        break;
+      case CP_FP_TX_DESC:
+        if (parse_int32(optarg, &c->fp_tx_desc)) {
+          fprintf(stderr, "fp tx descriptors parsing failed\n");
+          goto failed;
+        }
+        break;
 
       case CP_READY_FD:
         if (parse_int32(optarg, &i) != 0) {
@@ -615,6 +645,9 @@ static int config_defaults(struct configuration *c, char *progname)
   c->fp_poll_interval_tas = 10000;
   c->fp_poll_interval_app = 10000;
   c->fp_interface = NULL;
+  c->fp_per_thread_mbufs = 8192;
+  c->fp_rx_desc = 2048;
+  c->fp_tx_desc = 1024;
   c->ready_fd = -1;
   c->quiet = 0;
 
@@ -721,6 +754,12 @@ static void print_usage(struct configuration *c, char *progname)
       "  --fp-poll-interval-app      App polling interval before blocking "
           "in us [default: %"PRIu32"]\n"
       "  --fp-interface              PCIe address (Domain:Bus:Device.Function), for example- 0000:2:00.0\n"
+      "  --fp-per-thread-mbufs       Mbufs per fast path thread "
+          "[default: 8192]\n"
+      "  --fp-rx-desc                RX descriptors passed to PMD driver ring "
+          "[default: 2048]\n"
+      "  --fp-tx-desc                TX descriptors passed to PMD driver ring "
+          "[default: 1024]\n"
       "  --dpdk-extra=ARG            Add extra DPDK argument\n"
       "\n"
       "Miscelaneous:\n"

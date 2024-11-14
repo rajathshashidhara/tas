@@ -42,10 +42,7 @@
 #include <tas_memif.h>
 #include "internal.h"
 
-#define PERTHREAD_MBUFS 8192
 #define MBUF_SIZE (BUFFER_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
-#define RX_DESCRIPTORS 2048
-#define TX_DESCRIPTORS 1024
 
 uint8_t net_port_id = 0;
 static struct rte_eth_conf port_conf = {
@@ -234,7 +231,7 @@ int network_thread_init(struct dataplane_context *ctx)
   /* initialize tx queue */
   t->queue_id = ctx->id;
   rte_spinlock_lock(&initlock);
-  ret = rte_eth_tx_queue_setup(net_port_id, t->queue_id, TX_DESCRIPTORS,
+  ret = rte_eth_tx_queue_setup(net_port_id, t->queue_id, config.fp_tx_desc,
           rte_socket_id(), &eth_devinfo.default_txconf);
   rte_spinlock_unlock(&initlock);
   if (ret != 0) {
@@ -249,7 +246,7 @@ int network_thread_init(struct dataplane_context *ctx)
   /* initialize rx queue */
   t->queue_id = ctx->id;
   rte_spinlock_lock(&initlock);
-  ret = rte_eth_rx_queue_setup(net_port_id, t->queue_id, RX_DESCRIPTORS,
+  ret = rte_eth_rx_queue_setup(net_port_id, t->queue_id, config.fp_rx_desc,
           rte_socket_id(), &eth_devinfo.default_rxconf, t->pool);
   rte_spinlock_unlock(&initlock);
   if (ret != 0) {
@@ -331,7 +328,7 @@ static struct rte_mempool *mempool_alloc(void)
   char name[32];
   n = __sync_fetch_and_add(&pool_id, 1);
   snprintf(name, 32, "mbuf_pool_%u\n", n);
-  return rte_mempool_create(name, PERTHREAD_MBUFS, MBUF_SIZE, 32,
+  return rte_mempool_create(name, config.fp_per_thread_mbufs, MBUF_SIZE, 32,
           sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init, NULL,
           rte_pktmbuf_init, NULL, rte_socket_id(), 0);
 

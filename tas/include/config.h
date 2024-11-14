@@ -133,6 +133,12 @@ struct configuration {
   uint32_t fp_poll_interval_app;
   /** FP: interface name */
   char *fp_interface;
+  /** FP: per-thread MBUFs */
+  uint32_t fp_per_thread_mbufs;
+  /** FP: fp_rx_descriptors */
+  uint32_t fp_rx_desc;
+  /** FP: fp_tx_descriptors */
+  uint32_t fp_tx_desc;
   /** Ready signal fd */
   int ready_fd;
   /** Minimize output */
