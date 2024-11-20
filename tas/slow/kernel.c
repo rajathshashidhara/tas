@@ -34,6 +34,10 @@
 #include <tas.h>
 #include "internal.h"
 
+#ifdef DATAPLANE_STATS
+extern void dataplane_dump_stats(void);
+#endif
+
 static void slowpath_block(uint32_t cur_ts);
 static void timeout_trigger(struct timeout *to, uint8_t type, void *opaque);
 static void signal_tas_ready(void);
@@ -135,6 +139,9 @@ int slowpath_main(void)
         printf("stats: drops=%"PRIu64" k_rexmit=%"PRIu64" ecn=%"PRIu64" acks=%"
             PRIu64"\n", kstats.drops, kstats.kernel_rexmit, kstats.ecn_marked,
             kstats.acks);
+#ifdef DATAPLANE_STATS
+	      dataplane_dump_stats();
+#endif
         fflush(stdout);
       }
       last_print = cur_ts;
