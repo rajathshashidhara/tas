@@ -937,7 +937,7 @@ static void listener_accept(struct listener *l)
   c->local_seq = 1; /* TODO: generate random */
   c->syn_ts = f_beui32(opts.ts->ts_val);
   if (opts.ws == NULL)
-    c->tx_window_scale = 0;
+    c->tx_window_scale = config.tcp_remote_window_scale;
   else
     c->tx_window_scale = opts.ws->scale;
 

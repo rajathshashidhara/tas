@@ -67,6 +67,8 @@ struct configuration {
   uint32_t tcp_mss;
   /** Window scale configuration */
   uint8_t tcp_window_scale;
+  /** Remote window scale */
+  uint8_t tcp_remote_window_scale;
   /** IP address for this host */
   uint32_t ip;
   /** IP prefix length for this host */
