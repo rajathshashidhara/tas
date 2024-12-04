@@ -28,6 +28,7 @@
 #include <sys/un.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <pthread.h>
 
 #include <kernel_appif.h>
 #include <utils_timeout.h>
@@ -38,6 +39,7 @@
 
 static int ksock_fd = -1;
 static int kernel_evfd = 0;
+static pthread_mutex_t flextcp_context_init_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void flextcp_kernel_kick(void)
 {
@@ -191,6 +193,9 @@ int flextcp_kernel_newctx(struct flextcp_context *ctx)
   cmsg->cmsg_len = CMSG_LEN(sizeof(int));
   int *myfd = (int *)CMSG_DATA(cmsg);
   *myfd = ctx->evfd;
+
+  pthread_mutex_lock(&flextcp_context_init_mutex);
+
   sz = sendmsg(ksock_fd, &msg, 0);
   assert(sz == sizeof(req));
 
@@ -221,6 +226,8 @@ int flextcp_kernel_newctx(struct flextcp_context *ctx)
     }
     off += sz;
   }
+
+  pthread_mutex_unlock(&flextcp_context_init_mutex);
 
   if (resp->status != 0) {
     fprintf(stderr, "flextcp_kernel_newctx: request failed\n");
