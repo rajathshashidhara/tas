@@ -141,6 +141,10 @@ struct configuration {
   uint32_t fp_rx_desc;
   /** FP: fp_tx_descriptors */
   uint32_t fp_tx_desc;
+  /** FP: fp random drop enable. */
+  int fp_rand_drop;
+  /** FP: fp random drop probability. */
+  uint32_t fp_rand_drop_prob;
   /** Ready signal fd */
   int ready_fd;
   /** Minimize output */

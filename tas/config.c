@@ -84,6 +84,8 @@ enum cfg_params {
   CP_FP_PER_THREAD_MBUFS,
   CP_FP_RX_DESC,
   CP_FP_TX_DESC,
+  CP_FP_RAND_DROP,
+  CP_FP_RAND_DROP_PROB,
   CP_KNI_NAME,
   CP_READY_FD,
   CP_DPDK_EXTRA,
@@ -238,6 +240,12 @@ static struct option opts[] = {
     { .name = "fp-tx-desc",
       .has_arg = required_argument,
       .val = CP_FP_TX_DESC},
+    { .name = "fp-rand-drop",
+      .has_arg = no_argument,
+      .val = CP_FP_RAND_DROP},
+    { .name = "fp-rand-drop-prob",
+      .has_arg = required_argument,
+      .val = CP_FP_RAND_DROP_PROB},
     { .name = "ready-fd",
       .has_arg = required_argument,
       .val = CP_READY_FD },
@@ -566,6 +574,16 @@ int config_parse(struct configuration *c, int argc, char *argv[])
           goto failed;
         }
         break;
+      case CP_FP_RAND_DROP:
+        c->fp_rand_drop = 1;
+        break;
+      case CP_FP_RAND_DROP_PROB:
+        if (parse_double(optarg, &d) != 0 || d < 0 || d > 1) {
+          fprintf(stderr, "fp random drop prob parsing failed\n");
+          goto failed;
+        }
+        c->fp_rand_drop_prob = (uint32_t) (UINT32_MAX * d);
+        break;
 
       case CP_READY_FD:
         if (parse_int32(optarg, &i) != 0) {
@@ -659,6 +677,8 @@ static int config_defaults(struct configuration *c, char *progname)
   c->fp_per_thread_mbufs = 8192;
   c->fp_rx_desc = 2048;
   c->fp_tx_desc = 1024;
+  c->fp_rand_drop = 0;
+  c->fp_rand_drop_prob = 0;
   c->ready_fd = -1;
   c->quiet = 0;
 
@@ -773,6 +793,10 @@ static void print_usage(struct configuration *c, char *progname)
           "[default: 2048]\n"
       "  --fp-tx-desc                TX descriptors passed to PMD driver ring "
           "[default: 1024]\n"
+      "  --fp-rand-drop              Enable random drops."
+          "[default: disabled]\n"
+      "  --fp-rand-drop-prob         Probability of random drop [0.0, 1.0]. "
+          "[default: 0.0]\n"
       "  --dpdk-extra=ARG            Add extra DPDK argument\n"
       "\n"
       "Miscelaneous:\n"

@@ -30,6 +30,7 @@
 #include <rte_config.h>
 #include <rte_malloc.h>
 #include <rte_cycles.h>
+#include <rte_random.h>
 
 #include <tas_memif.h>
 
@@ -281,6 +282,26 @@ static unsigned poll_rx(struct dataplane_context *ctx, uint32_t ts,
   /* prefetch packet contents (1st cache line) */
   for (i = 0; i < n; i++) {
     rte_prefetch0(network_buf_bufoff(bhs[i]));
+  }
+
+  if (config.fp_rand_drop) {
+    /* Random drops enabled. */
+    unsigned k;
+    for (i = 0; i < n; i++) {
+      if (UNLIKELY(rte_rand() < config.fp_rand_drop_prob)) {
+        bufcache_free(ctx, bhs[i]);
+        bhs[i] = NULL;
+      }
+    }
+
+    k = 0;
+    for (i = 0; i < n; i++) {
+      if (bhs[i] == NULL)
+        continue;
+
+      bhs[k++] = bhs[i];
+    }
+    n = k;
   }
 
   /* look up flow states */
@@ -548,6 +569,26 @@ static inline void tx_flush(struct dataplane_context *ctx)
 
   if (ctx->tx_num == 0) {
     return;
+  }
+
+  /* drop packets randomly. */
+  if (config.fp_rand_drop) {
+    unsigned k;
+    for (i = 0; i < ctx->tx_num; i++) {
+      if (UNLIKELY(rte_rand() < config.fp_rand_drop_prob)) {
+        bufcache_free(ctx, ctx->tx_handles[i]);
+        ctx->tx_handles[i] = NULL;
+      }
+    }
+
+    k = 0;
+    for (i = 0; i < ctx->tx_num; i++) {
+      if (ctx->tx_handles[i] == NULL)
+        continue;
+
+      ctx->tx_handles[k++] = ctx->tx_handles[i];
+    }
+    ctx->tx_num = k;
   }
 
   /* try to send out packets */
