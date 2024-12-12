@@ -288,7 +288,7 @@ static unsigned poll_rx(struct dataplane_context *ctx, uint32_t ts,
     /* Random drops enabled. */
     unsigned k;
     for (i = 0; i < n; i++) {
-      if (UNLIKELY(rte_rand() < config.fp_rand_drop_prob)) {
+      if (UNLIKELY(((uint32_t)rte_rand()) < config.fp_rand_drop_prob)) {
         bufcache_free(ctx, bhs[i]);
         bhs[i] = NULL;
       }
@@ -575,7 +575,7 @@ static inline void tx_flush(struct dataplane_context *ctx)
   if (config.fp_rand_drop) {
     unsigned k;
     for (i = 0; i < ctx->tx_num; i++) {
-      if (UNLIKELY(rte_rand() < config.fp_rand_drop_prob)) {
+      if (UNLIKELY(((uint32_t)rte_rand()) < config.fp_rand_drop_prob)) {
         bufcache_free(ctx, ctx->tx_handles[i]);
         ctx->tx_handles[i] = NULL;
       }
