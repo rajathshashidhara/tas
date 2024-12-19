@@ -571,6 +571,7 @@ static inline void tx_flush(struct dataplane_context *ctx)
     return;
   }
 
+#if 0
   /* drop packets randomly. */
   if (config.fp_rand_drop) {
     unsigned k;
@@ -590,6 +591,7 @@ static inline void tx_flush(struct dataplane_context *ctx)
     }
     ctx->tx_num = k;
   }
+#endif
 
   /* try to send out packets */
   ret = network_send(&ctx->net, ctx->tx_num, ctx->tx_handles);
