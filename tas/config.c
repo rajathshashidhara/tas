@@ -85,7 +85,8 @@ enum cfg_params {
   CP_FP_RX_DESC,
   CP_FP_TX_DESC,
   CP_FP_RAND_DROP,
-  CP_FP_RAND_DROP_PROB,
+  CP_FP_RAND_DROP_RX_PROB,
+  CP_FP_RAND_DROP_TX_PROB,
   CP_KNI_NAME,
   CP_READY_FD,
   CP_DPDK_EXTRA,
@@ -243,9 +244,12 @@ static struct option opts[] = {
     { .name = "fp-rand-drop",
       .has_arg = no_argument,
       .val = CP_FP_RAND_DROP},
-    { .name = "fp-rand-drop-prob",
+    { .name = "fp-rand-drop-rx-prob",
       .has_arg = required_argument,
-      .val = CP_FP_RAND_DROP_PROB},
+      .val = CP_FP_RAND_DROP_RX_PROB},
+    { .name = "fp-rand-drop-tx-prob",
+      .has_arg = required_argument,
+      .val = CP_FP_RAND_DROP_TX_PROB},
     { .name = "ready-fd",
       .has_arg = required_argument,
       .val = CP_READY_FD },
@@ -577,12 +581,20 @@ int config_parse(struct configuration *c, int argc, char *argv[])
       case CP_FP_RAND_DROP:
         c->fp_rand_drop = 1;
         break;
-      case CP_FP_RAND_DROP_PROB:
+      case CP_FP_RAND_DROP_RX_PROB:
         if (parse_double(optarg, &d) != 0 || d < 0 || d > 1) {
           fprintf(stderr, "fp random drop prob parsing failed\n");
           goto failed;
         }
-        c->fp_rand_drop_prob = (uint32_t) (UINT32_MAX * d);
+        c->fp_rand_drop_rx_prob = (uint32_t) (UINT32_MAX * d);
+        break;
+
+      case CP_FP_RAND_DROP_TX_PROB:
+        if (parse_double(optarg, &d) != 0 || d < 0 || d > 1) {
+          fprintf(stderr, "fp random drop prob parsing failed\n");
+          goto failed;
+        }
+        c->fp_rand_drop_tx_prob = (uint32_t) (UINT32_MAX * d);
         break;
 
       case CP_READY_FD:
@@ -678,7 +690,8 @@ static int config_defaults(struct configuration *c, char *progname)
   c->fp_rx_desc = 2048;
   c->fp_tx_desc = 1024;
   c->fp_rand_drop = 0;
-  c->fp_rand_drop_prob = 0;
+  c->fp_rand_drop_rx_prob = 0;
+  c->fp_rand_drop_tx_prob = 0;
   c->ready_fd = -1;
   c->quiet = 0;
 
