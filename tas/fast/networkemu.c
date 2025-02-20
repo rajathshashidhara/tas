@@ -171,7 +171,6 @@ static unsigned poll_sched(struct network_context *ctx,
     goto exit;
 
   /* Post the bhs to rx_ring */
-  cnt_sched += n;
   k = rte_ring_enqueue_burst(net_rx_ring, (void **) bhs, n, NULL);
   if (UNLIKELY(k < n)) {
     /* Not enough space! */
