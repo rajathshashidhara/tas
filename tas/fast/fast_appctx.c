@@ -32,14 +32,14 @@
 
 void fast_appctx_poll_pf(struct dataplane_context *ctx, uint32_t id)
 {
-  struct flextcp_pl_appctx *actx = &fp_state->appctx[ctx->id][id];
+  struct flextcp_pl_appctx *actx = &fp_state->appctx[ctx->id - 1][id];
   rte_prefetch0(dma_pointer(actx->tx_base + actx->tx_head, 1));
 }
 
 int fast_appctx_poll_fetch(struct dataplane_context *ctx, uint32_t id,
     void **pqe)
 {
-  struct flextcp_pl_appctx *actx = &fp_state->appctx[ctx->id][id];
+  struct flextcp_pl_appctx *actx = &fp_state->appctx[ctx->id - 1][id];
   struct flextcp_pl_atx *atx;
   uint8_t type;
   uint32_t flow_id  = -1;
@@ -137,7 +137,7 @@ int fast_actx_rxq_alloc(struct dataplane_context *ctx,
 
 int fast_actx_rxq_probe(struct dataplane_context *ctx, uint32_t id)
 {
-  struct flextcp_pl_appctx *actx = &fp_state->appctx[ctx->id][id];
+  struct flextcp_pl_appctx *actx = &fp_state->appctx[ctx->id - 1][id];
   struct flextcp_pl_arx *parx;
   uint32_t pos, i;
 

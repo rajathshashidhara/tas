@@ -72,6 +72,9 @@ enum cfg_params {
   CP_CC_TIMELY_MINRATE,
   CP_IP_ROUTE,
   CP_IP_ADDR,
+  CP_NET_QLEN,
+  CP_NET_RATELIMIT,
+  CP_NET_ECNTHRESH,
   CP_FP_CORES_MAX,
   CP_FP_NO_INTS,
   CP_FP_NO_XSUMOFFLOAD,
@@ -205,6 +208,15 @@ static struct option opts[] = {
     { .name = "ip-addr",
       .has_arg = required_argument,
       .val = CP_IP_ADDR },
+    { .name = "net-qlen",
+      .has_arg = required_argument,
+      .val = CP_NET_QLEN },
+    { .name = "net-ratelimit",
+      .has_arg = required_argument,
+      .val = CP_NET_RATELIMIT },  
+    { .name = "net-ecn-thresh",
+      .has_arg = required_argument,
+      .val = CP_NET_ECNTHRESH },  
     { .name = "fp-cores-max",
       .has_arg = required_argument,
       .val = CP_FP_CORES_MAX },
@@ -520,6 +532,24 @@ int config_parse(struct configuration *c, int argc, char *argv[])
           goto failed;
         }
         break;
+      case CP_NET_QLEN:
+        if (parse_int32(optarg, &c->net_qlen) != 0) {
+          fprintf(stderr, "net queue length parsing failed\n");
+          goto failed;
+        }
+        break;
+      case CP_NET_RATELIMIT:
+        if (parse_int32(optarg, &c->net_rate) != 0) {
+          fprintf(stderr, "net rate limiting parsing failed\n");
+          goto failed;
+        }
+        break;
+      case CP_NET_ECNTHRESH:
+        if (parse_int32(optarg, &c->net_ecn_thresh) != 0) {
+          fprintf(stderr, "net rate limiting parsing failed\n");
+          goto failed;
+        }
+        break;
       case CP_FP_CORES_MAX:
         if (parse_int32(optarg, &c->fp_cores_max) != 0) {
           fprintf(stderr, "fp cores max parsing failed\n");
@@ -677,6 +707,9 @@ static int config_defaults(struct configuration *c, char *progname)
   c->cc_timely_beta = 0.8 * UINT32_MAX;
   c->cc_timely_min_rtt = 11;
   c->cc_timely_min_rate = 10000;
+  c->net_qlen = 512;
+  c->net_rate = 100*1000*1000; /* 100 Gbps */
+  c->net_ecn_thresh = 65; /* TODO: threshold? */ 
   c->fp_cores_max = 1;
   c->fp_interrupts = 1;
   c->fp_xsumoffload = 1;

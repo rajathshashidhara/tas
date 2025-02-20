@@ -107,7 +107,7 @@ distclean:
 install: tas/tas lib/libtas_sockets.so lib/libtas_interpose.so \
   lib/libtas.so tools/statetool
 	mkdir -p $(DESTDIR)$(BINDIR)
-	cp tas/tas $(DESTDIR)$(BINDIR)/tas-network-stack-nocopy
+	cp tas/tas $(DESTDIR)$(BINDIR)/tas-network-stack-shaper-nocopy
 	cp tools/statetool $(DESTDIR)$(BINDIR)/tas-statetool
 	mkdir -p $(DESTDIR)$(LIBDIR)
 	cp lib/libtas_interpose.so $(DESTDIR)$(LIBDIR)/libtas_interpose_nocopy.so
@@ -119,7 +119,7 @@ install: tas/tas lib/libtas_sockets.so lib/libtas_interpose.so \
 	cp lib/sockets/include/tas_sockets.h $(DESTDIR)$(INCDIR)/tas_sockets.h
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/tas-network-stack-nocopy
+	rm -f $(DESTDIR)$(BINDIR)/tas-network-stack-shaper-nocopy
 	rm -f $(DESTDIR)$(BINDIR)/tas-statetool
 	rm -f $(DESTDIR)$(LIBDIR)/libtas_interpose_nocopy.so
 	rm -f $(DESTDIR)$(LIBDIR)/libtas_sockets_nocopy.so

@@ -117,6 +117,12 @@ struct configuration {
   uint32_t cc_timely_min_rtt;
   /** CC timely: minimal rate to use */
   uint32_t cc_timely_min_rate;
+  /** NET: queue length */
+  uint32_t net_qlen;
+  /** NET: pacing limit */
+  uint32_t net_rate;
+  /** NET: Net ECN threshold */
+  uint32_t net_ecn_thresh;
   /** FP: maximal number of cores used */
   uint32_t fp_cores_max;
   /** FP: interrupts (blocking) enabled */

@@ -86,12 +86,16 @@ static int reta_setup(void);
 static int reta_mlx5_resize(void);
 static rte_spinlock_t initlock = RTE_SPINLOCK_INITIALIZER;
 
+struct rte_ring *net_rx_ring;
+struct rte_ring *net_tx_ring;
+
 int network_init(unsigned n_threads)
 {
   uint8_t count;
   int ret;
   uint16_t p;
 
+  assert(n_threads == 1);
   num_threads = n_threads;
 
   /* allocate thread pointer arrays */
@@ -187,6 +191,24 @@ int network_init(unsigned n_threads)
 
   memcpy(&tas_info->mac_address, &eth_addr, 6);
 
+
+  /* Setup FP rings. */
+  if ((net_rx_ring = rte_ring_create("net_rx_ring",
+                        config.fp_per_thread_mbufs * 2, rte_socket_id(),
+                        RING_F_SP_ENQ | RING_F_SC_DEQ)) == NULL)
+  {
+    fprintf(stderr, "initializing rte_ring_create");
+    return -1;
+  }
+
+  if ((net_tx_ring = rte_ring_create("net_tx_ring",
+                        config.fp_per_thread_mbufs * 2, rte_socket_id(),
+                        RING_F_SP_ENQ | RING_F_SC_DEQ)) == NULL)
+  {
+    fprintf(stderr, "initializing rte_ring_create");
+    return -1;
+  }
+
   return 0;
 
 error_exit:
@@ -214,13 +236,15 @@ void network_dump_stats(void)
   }
 }
 
-int network_thread_init(struct dataplane_context *ctx)
+volatile uint32_t start_done = 0;
+
+int network_thread_init(struct network_context *ctx)
 {
   static volatile uint32_t tx_init_done = 0;
   static volatile uint32_t rx_init_done = 0;
-  static volatile uint32_t start_done = 0;
 
   struct network_thread *t = &ctx->net;
+  struct sched_thread *s = &ctx->sched;
   int ret;
 
   /* allocate mempool */
@@ -299,8 +323,25 @@ int network_thread_init(struct dataplane_context *ctx)
     }
   }
 
+  /* Allocate scheduler */
+  s->ts_virtual = 0;
+  s->ts_real = timestamp();
+  utils_rng_init(&s->rng, 0x123456789abcdefULL);
+  s->q.head = 0;
+  s->q.num = 0;
+  s->q.ts = 0;
+  s->q.len = config.net_qlen;
+  s->q.rate = config.net_rate;
+  s->q.k_thresh = config.net_ecn_thresh;
+  s->q.bufs = (struct network_buf_handle **) rte_calloc("net-queue", 
+                      s->q.len, sizeof(*s->q.bufs), 0);
+  if (s->q.bufs == NULL)
+    goto error_sched;
+
   return 0;
 
+error_sched:
+  /* TODO: destroy intr ctrl */
 error_int_queue:
   /* TODO: destroy rx queue */
 error_rx_queue:

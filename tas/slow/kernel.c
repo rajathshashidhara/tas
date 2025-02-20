@@ -43,6 +43,9 @@ static void timeout_trigger(struct timeout *to, uint8_t type, void *opaque);
 static void signal_tas_ready(void);
 void flexnic_loadmon(uint32_t cur_ts);
 
+extern uint64_t cnt_ring_drop;
+extern uint64_t cnt_tail_drop;
+
 struct timeout_manager timeout_mgr;
 static int exited = 0;
 struct kernel_statistics kstats;
@@ -137,8 +140,9 @@ int slowpath_main(void)
     if (cur_ts - last_print >= 1000000) {
       if (!config.quiet) {
         printf("stats: drops=%"PRIu64" k_rexmit=%"PRIu64" ecn=%"PRIu64" acks=%"
-            PRIu64"\n", kstats.drops, kstats.kernel_rexmit, kstats.ecn_marked,
-            kstats.acks);
+            PRIu64" tail_drops=%"PRIu64" ring_drops=%"PRIu64"\n", 
+            kstats.drops, kstats.kernel_rexmit, kstats.ecn_marked,
+            kstats.acks, cnt_tail_drop, cnt_ring_drop);
 #ifdef DATAPLANE_STATS
 	      dataplane_dump_stats();
 #endif

@@ -370,14 +370,15 @@ int nicif_tx_alloc(uint16_t len, void **pbuf, uint32_t *opaque)
 /** Actually send out transmit buffer (lens need to match) */
 void nicif_tx_send(uint32_t opaque, int no_ts)
 {
+  uint16_t core = 1;
   uint32_t tail = (opaque == 0 ? txq_len - 1 : opaque - 1);
-  volatile struct flextcp_pl_ktx *ktx = &txq_base[0][tail];
+  volatile struct flextcp_pl_ktx *ktx = &txq_base[core][tail];
 
   MEM_BARRIER();
   ktx->type = (!no_ts ? FLEXTCP_PL_KTX_PACKET : FLEXTCP_PL_KTX_PACKET_NOTS);
-  txq_tail[0] = opaque;
-  
-  notify_fastpath_core(0);
+  txq_tail[core] = opaque;
+
+  notify_fastpath_core(core);
 }
 
 static int adminq_init(void)
@@ -403,7 +404,7 @@ static int adminq_init(void)
   rxq_next = 0;
 
   for (i = 0; i < fn_cores; i++) {
-    if (adminq_init_core(i) != 0)
+    if (adminq_init_core(1 + i) != 0)
       return -1;
   }
 
@@ -493,7 +494,7 @@ static inline int rxq_poll(void)
   uint8_t type;
   int ret = 0;
 
-  core = rxq_next;
+  core = rxq_next + 1;
   old_tail = tail = rxq_tail[core];
   krx = &rxq_base[core][tail];
   buf = &rxq_bufs[core][tail];
@@ -564,6 +565,7 @@ static inline void process_packet(const void *buf, uint16_t len,
 static inline volatile struct flextcp_pl_ktx *ktx_try_alloc(uint32_t core,
     struct nic_buffer **pbuf, uint32_t *new_tail)
 {
+  core = core + 1;
   uint32_t tail = txq_tail[core];
   volatile struct flextcp_pl_ktx *ktx = &txq_base[core][tail];
   struct nic_buffer *buf = &txq_bufs[core][tail];

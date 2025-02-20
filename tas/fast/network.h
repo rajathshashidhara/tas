@@ -39,7 +39,9 @@ struct network_buf_handle;
 extern uint8_t net_port_id;
 extern uint16_t rss_reta_size;
 
-int network_thread_init(struct dataplane_context *ctx);
+int network_thread_init(struct network_context *ctx);
+void network_loop(struct network_context *ctx);
+void network_context_destroy(struct network_context *ctx);
 int network_rx_interrupt_ctl(struct network_thread *t, int turnon);
 
 int network_scale_up(uint16_t old, uint16_t new);
