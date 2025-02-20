@@ -93,10 +93,6 @@ static inline void queue_fire(struct qman_thread *t,
 static inline void queue_activate(struct qman_thread *t, struct queue *q,
     uint32_t idx);
 static inline uint32_t timestamp(void);
-static inline int timestamp_lessthaneq(struct qman_thread *t, uint32_t a,
-    uint32_t b);
-static inline int64_t rel_time(uint32_t cur_ts, uint32_t ts_in);
-
 
 int qman_thread_init(struct dataplane_context *ctx)
 {
@@ -149,7 +145,7 @@ uint32_t qman_next_ts(struct qman_thread *t, uint32_t cur_ts)
   if(idx != IDXLIST_INVAL) {
     struct queue *q = &t->queues[idx];
 
-    if(timestamp_lessthaneq(t, q->next_ts, ret_ts)) {
+    if(timestamp_lessthaneq(t->ts_virtual, q->next_ts, ret_ts)) {
       // Fired in the past - immediate timeout
       return 0;
     } else {
@@ -292,12 +288,6 @@ static inline unsigned poll_nolimit(struct qman_thread *t, uint32_t cur_ts,
 /*****************************************************************************/
 /* Managing skiplist queues */
 
-static inline uint32_t queue_new_ts(struct qman_thread *t, struct queue *q,
-    uint32_t bytes)
-{
-  return t->ts_virtual + ((uint64_t) bytes * 8 * 1000000) / q->rate;
-}
-
 /** Add queue to the skip list list */
 static inline void queue_activate_skiplist(struct qman_thread *t,
     struct queue *q, uint32_t q_idx)
@@ -317,10 +307,10 @@ static inline void queue_activate_skiplist(struct qman_thread *t,
    *  - not more than if it just sent max_chunk at the current rate
    */
   ts = q->next_ts;
-  max_ts = queue_new_ts(t, q, q->max_chunk);
-  if (timestamp_lessthaneq(t, ts, t->ts_virtual)) {
+  max_ts = queue_new_ts(t->ts_virtual, q->rate, q->max_chunk);
+  if (timestamp_lessthaneq(t->ts_virtual, ts, t->ts_virtual)) {
     ts = q->next_ts = t->ts_virtual;
-  } else if (!timestamp_lessthaneq(t, ts, max_ts)) {
+  } else if (!timestamp_lessthaneq(t->ts_virtual, ts, max_ts)) {
     ts = q->next_ts = max_ts;
   }
   q->next_ts = ts;
@@ -330,7 +320,7 @@ static inline void queue_activate_skiplist(struct qman_thread *t,
   for (l = QMAN_SKIPLIST_LEVELS - 1; l >= 0; l--) {
     idx = (pred != IDXLIST_INVAL ? pred : t->head_idx[l]);
     while (idx != IDXLIST_INVAL &&
-        timestamp_lessthaneq(t, t->queues[idx].next_ts, ts))
+        timestamp_lessthaneq(t->ts_virtual, t->queues[idx].next_ts, ts))
     {
       pred = idx;
       idx = t->queues[idx].next_idxs[l];
@@ -388,7 +378,7 @@ static inline unsigned poll_skiplist(struct qman_thread *t, uint32_t cur_ts,
     /* beyond max_vts */
     dprintf("poll_skiplist: next_ts=%u vts=%u rts=%u max_vts=%u cur_ts=%u\n",
         q->next_ts, t->ts_virtual, t->ts_real, max_vts, cur_ts);
-    if (!timestamp_lessthaneq(t, q->next_ts, max_vts)) {
+    if (!timestamp_lessthaneq(t->ts_virtual, q->next_ts, max_vts)) {
       t->ts_virtual = max_vts;
       break;
     }
@@ -415,7 +405,7 @@ static inline unsigned poll_skiplist(struct qman_thread *t, uint32_t cur_ts,
   if (cnt == num) {
     idx = t->head_idx[0];
     if (idx != IDXLIST_INVAL &&
-        timestamp_lessthaneq(t, t->queues[idx].next_ts, max_vts))
+        timestamp_lessthaneq(t->ts_virtual, t->queues[idx].next_ts, max_vts))
     {
       t->ts_virtual = t->queues[idx].next_ts;
     } else {
@@ -448,7 +438,7 @@ static inline void queue_fire(struct qman_thread *t,
 
   dprintf("queue_fire: t=%p q=%p idx=%u gidx=%u bytes=%u avail=%u rate=%u\n", t, q, idx, idx, bytes, q->avail, q->rate);
   if (q->rate > 0) {
-    q->next_ts = queue_new_ts(t, q, bytes);
+    q->next_ts = queue_new_ts(t->ts_virtual, q->rate, bytes);
   }
 
   if (q->avail > 0) {
@@ -476,56 +466,3 @@ static inline void queue_activate(struct qman_thread *t, struct queue *q,
   }
 }
 
-static inline uint32_t timestamp(void)
-{
-  static uint64_t freq = 0;
-  uint64_t cycles = rte_get_tsc_cycles();
-
-  if (freq == 0)
-    freq = rte_get_tsc_hz();
-
-  cycles *= 1000000000ULL;
-  cycles /= freq;
-  return cycles;
-}
-
-/** Relative timestamp, ignoring wrap-arounds */
-static inline int64_t rel_time(uint32_t cur_ts, uint32_t ts_in)
-{
-  uint64_t ts = ts_in;
-  const uint64_t middle = (1ULL << (TIMESTAMP_BITS - 1));
-  uint64_t start, end;
-
-  if (cur_ts < middle) {
-    /* negative interval is split in half */
-    start = (cur_ts - middle) & TIMESTAMP_MASK;
-    end = (1ULL << TIMESTAMP_BITS);
-    if (start <= ts && ts < end) {
-      /* in first half of negative interval, smallest timestamps */
-      return ts - start - middle;
-    } else {
-      /* in second half or in positive interval */
-      return ts - cur_ts;
-    }
-  } else if (cur_ts == middle) {
-    /* intervals not split */
-    return ts - cur_ts;
-  } else {
-    /* higher interval is split */
-    start = 0;
-    end = ((cur_ts + middle) & TIMESTAMP_MASK) + 1;
-    if (start <= cur_ts && ts < end) {
-      /* in second half of positive interval, largest timestamps */
-      return ts + ((1ULL << TIMESTAMP_BITS) - cur_ts);
-    } else {
-      /* in negative interval or first half of positive interval */
-      return ts - cur_ts;
-    }
-  }
-}
-
-static inline int timestamp_lessthaneq(struct qman_thread *t, uint32_t a,
-    uint32_t b)
-{
-  return rel_time(t->ts_virtual, a) <= rel_time(t->ts_virtual, b);
-}

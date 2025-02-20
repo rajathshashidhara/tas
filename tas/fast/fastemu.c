@@ -103,6 +103,9 @@ int dataplane_context_init(struct dataplane_context *ctx)
 {
   char name[32];
 
+  /* barrier wait for main thread to start the device */
+  while (!start_done);
+
   /* initialize forwarding queue */
   sprintf(name, "qman_fwd_ring_%u", ctx->id);
   if ((ctx->qman_fwd_ring = rte_ring_create(name, 32 * 1024, rte_socket_id(),
@@ -118,11 +121,14 @@ int dataplane_context_init(struct dataplane_context *ctx)
     return -1;
   }
 
+#if 0
   /* initialize network queue */
   if (network_thread_init(ctx) != 0) {
     fprintf(stderr, "initializing rx thread failed\n");
     return -1;
   }
+#endif
+
 
   ctx->poll_next_ctx = ctx->id;
 
@@ -197,9 +203,11 @@ static void dataplane_block(struct dataplane_context *ctx, uint32_t ts)
   int ret, i;
   struct rte_epoll_event event[2];
 
+#if 0
   if (network_rx_interrupt_ctl(&ctx->net, 1) != 0) {
     return;
   }
+#endif
 
   max_timeout = qman_next_ts(&ctx->qman, ts);
 
@@ -221,7 +229,9 @@ static void dataplane_block(struct dataplane_context *ctx, uint32_t ts)
       }
     }
   }
+#if 0
   network_rx_interrupt_ctl(&ctx->net, 0);
+#endif
 }
 
 #ifdef DATAPLANE_STATS
@@ -271,7 +281,10 @@ static unsigned poll_rx(struct dataplane_context *ctx, uint32_t ts,
   STATS_ADD(ctx, rx_poll, 1);
 
   /* receive packets */
+#if 0
   ret = network_poll(&ctx->net, n, bhs);
+#endif
+  ret = rte_ring_dequeue_burst(net_rx_ring, (void **) bhs, n, NULL);
   if (ret <= 0) {
     STATS_ADD(ctx, rx_empty, 1);
     return 0;
@@ -592,7 +605,11 @@ static inline void tx_flush(struct dataplane_context *ctx)
   }
 
   /* try to send out packets */
+#if 0
   ret = network_send(&ctx->net, ctx->tx_num, ctx->tx_handles);
+#endif
+  ret = rte_ring_enqueue_burst(net_tx_ring, (void **) ctx->tx_handles,
+            ctx->tx_num, NULL);
 
   if (ret == ctx->tx_num) {
     /* everything sent */
@@ -639,7 +656,7 @@ static void arx_cache_flush(struct dataplane_context *ctx, uint64_t tsc)
   struct flextcp_pl_arx *parx[BATCH_SIZE];
 
   for (i = 0; i < ctx->arx_num; i++) {
-    actx = &fp_state->appctx[ctx->id][ctx->arx_ctx[i]];
+    actx = &fp_state->appctx[ctx->id - 1][ctx->arx_ctx[i]];
     if (fast_actx_rxq_alloc(ctx, actx, &parx[i]) != 0) {
       /* TODO: how do we handle this? */
       fprintf(stderr, "arx_cache_flush: no space in app rx queue\n");
@@ -656,7 +673,7 @@ static void arx_cache_flush(struct dataplane_context *ctx, uint64_t tsc)
   }
 
   for (i = 0; i < ctx->arx_num; i++) {
-    actx = &fp_state->appctx[ctx->id][ctx->arx_ctx[i]];
+    actx = &fp_state->appctx[ctx->id - 1][ctx->arx_ctx[i]];
     notify_appctx(actx, tsc);
   }
 

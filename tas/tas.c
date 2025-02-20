@@ -95,6 +95,7 @@ int main(int argc, char *argv[])
     goto error_exit;
   }
 
+  assert(fp_cores_max == 1);
   if ((core_loads = calloc(fp_cores_max, sizeof(*core_loads))) == NULL) {
     res = EXIT_FAILURE;
     fprintf(stderr, "core loads alloc failed\n");
@@ -139,25 +140,18 @@ error_exit:
   return res;
 }
 
+static struct network_context n_ctx;
+static struct dataplane_context d_ctx;
+
 static int common_thread(void *arg)
 {
   uint16_t id = (uintptr_t) arg;
-  struct dataplane_context *ctx;
 
   {
     char name[17];
     snprintf(name, sizeof(name), "stcp-fp-%u", id);
     pthread_setname_np(pthread_self(), name);
   }
-
-  /* Allocate fastpath core context */
-  if ((ctx = rte_zmalloc("fastpath core context", sizeof(*ctx), 0)) == NULL) {
-    fprintf(stderr, "Allocating fastpath core context failed\n");
-    goto error_alloc;
-  }
-  ctxs[id] = ctx;
-  ctx->id = id;
-
 
   /* initialize trace if enabled */
 #ifdef FLEXNIC_TRACING
@@ -167,24 +161,45 @@ static int common_thread(void *arg)
   }
 #endif
 
-  /* initialize data plane context */
-  if (dataplane_context_init(ctx) != 0) {
-    fprintf(stderr, "initializing data plane context\n");
-    goto error_dpctx;
+  /* initialize network context */
+  if (id == 0) {
+    n_ctx.id = id;
+
+    if (network_thread_init(&n_ctx) != 0) {
+      fprintf(stderr, "initializing network context\n");
+      goto error_dpctx;
+    }
+
+    /* poll network */
+    network_loop(&n_ctx);
+
+    /* destroy */
+    network_context_destroy(&n_ctx);
+  }
+  else if (id == 1) {
+    d_ctx.id = id;
+    ctxs[0] = &d_ctx;
+
+    /* initialize data plane context */
+    if (dataplane_context_init(&d_ctx) != 0) {
+      fprintf(stderr, "initializing data plane context\n");
+      goto error_dpctx;
+    }
+    memcpy(&d_ctx.net, &n_ctx.net, sizeof(n_ctx.net));
+
+    /* poll doorbells and network */
+    dataplane_loop(&d_ctx);
+
+    dataplane_context_destroy(&d_ctx);
   }
 
-  /* poll doorbells and network */
-  dataplane_loop(ctx);
-
-  dataplane_context_destroy(ctx);
   return 0;
 
 error_dpctx:
 #ifdef FLEXNIC_TRACING
 error_trace:
 #endif
-  dataplane_context_destroy(ctx);
-error_alloc:
+  // dataplane_context_destroy(ctx);
   thread_error();
   return -1;
 }
@@ -212,10 +227,11 @@ static int start_threads(void)
 
   /* start common threads */
   RTE_LCORE_FOREACH_WORKER(core) {
-    if (threads_launched < fp_cores_max) {
+    /* Additional network thread */
+    if (threads_launched < fp_cores_max + 1) {
       arg = (void *) (uintptr_t) threads_launched;
       if (rte_eal_remote_launch(common_thread, arg, core) != 0) {
-	fprintf(stderr, "ERROR\n");
+	      fprintf(stderr, "ERROR\n");
         return -1;
       }
       threads_launched++;
