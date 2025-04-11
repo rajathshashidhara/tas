@@ -214,9 +214,11 @@ static inline int tcp_valid_rxack(struct flextcp_pl_flowst *fs, uint32_t ack,
 static inline uint32_t tcp_txavail(const struct flextcp_pl_flowst *fs,
     const uint32_t *pavail)
 {
-  uint32_t buf_avail, fc_avail;
+  uint32_t buf_avail, fc_avail, sacked_avail;
 
   buf_avail = (pavail != NULL ? *pavail : fs->tx_avail);
+  sacked_avail = (fs->tx_ooo_end != 0 ? (fs->tx_ooo_end - fs->tx_ooo_start) : 0);
+  buf_avail -= sacked_avail;  // Subtract already ACK'ed data
 
   /* flow control window */
   fc_avail = fs->rx_remote_avail - fs->tx_sent;
@@ -228,6 +230,8 @@ static inline uint32_t tcp_txavail(const struct flextcp_pl_flowst *fs,
 struct tcp_opts {
   /** Timestamp option */
   struct tcp_timestamp_opt *ts;
+  /** SACK option */
+  struct tcp_sack_opt *sack;
 };
 
 /**
@@ -280,6 +284,14 @@ static inline int tcp_parse_options(const struct pkt_tcp *p, uint16_t len,
         }
 
         opts->ts = (struct tcp_timestamp_opt *) (opt + off);
+      }
+      else if (opt_kind == TCP_OPT_SACK) {
+        if (opt_len != sizeof(struct tcp_sack_opt)) {
+          fprintf(stderr, "parse_options: opt_len=%u so=%zu\n", opt_len, sizeof(struct tcp_sack_opt));
+          return -1;
+        }
+
+        opts->sack = (struct tcp_sack_opt *) (opt + off);
       }
     }
     off += opt_len;

@@ -284,14 +284,19 @@ struct flextcp_pl_flowst {
   /** Bytes available in remote end for received segments */
   uint32_t rx_remote_avail;
 
+#if 0
   /** spin lock */
   volatile uint32_t lock;
+#endif
 
 #ifdef FLEXNIC_PL_OOO_RECV
   /* Start of interval of out-of-order received data */
   uint32_t rx_ooo_start;
   /* Length of interval of out-of-order received data */
   uint32_t rx_ooo_len;
+  /* SACK offsets. */
+  uint32_t tx_ooo_start;
+  uint32_t tx_ooo_end;
 #endif
 
   /** Number of bytes available to be sent */
@@ -314,8 +319,10 @@ struct flextcp_pl_flowst {
   uint16_t cnt_rx_acks;
   /** Counter bytes sent */
   uint32_t cnt_rx_ack_bytes;
+#if 0
   /** Counter acks marked */
   uint32_t cnt_rx_ecn_bytes;
+#endif
   /** RTT estimate */
   uint32_t rtt_est;
 

@@ -221,7 +221,9 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
   fs->remote_port = rp;
 
   fs->flow_group = flow_group;
+#if 0
   fs->lock = 0;
+#endif
   fs->bump_seq = 0;
   fs->tx_window_scale = tx_window_scale;
   fs->rx_window_scale = rx_window_scale;
@@ -230,6 +232,8 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
   fs->rx_next_pos = 0;
   fs->rx_next_seq = remote_seq;
   fs->rx_remote_avail = rx_len; /* XXX */
+  fs->rx_ooo_len = 0;
+  fs->tx_ooo_end = 0;
 
   fs->tx_sent = 0;
   fs->tx_next_pos = 0;
@@ -255,7 +259,9 @@ int nicif_connection_disable(uint32_t f_id, uint32_t *tx_seq, uint32_t *rx_seq,
 {
   struct flextcp_pl_flowst *fs = &fp_state->flowst[f_id];
 
+#if 0
   util_spin_lock(&fs->lock);
+#endif
 
   *tx_seq = fs->tx_next_seq;
   *rx_seq = fs->rx_next_seq;
@@ -265,7 +271,9 @@ int nicif_connection_disable(uint32_t f_id, uint32_t *tx_seq, uint32_t *rx_seq,
   *tx_closed = !!(fs->rx_base_sp & FLEXNIC_PL_FLOWST_TXFIN) &&
       fs->tx_sent == 0;
 
+#if 0
   util_spin_unlock(&fs->lock);
+#endif
 
   flow_slot_clear(f_id, fs->local_ip, fs->local_port, fs->remote_ip,
       fs->remote_port);
@@ -299,7 +307,11 @@ int nicif_connection_stats(uint32_t f_id,
   p_stats->c_drops = fs->cnt_tx_drops;
   p_stats->c_acks = fs->cnt_rx_acks;
   p_stats->c_ackb = fs->cnt_rx_ack_bytes;
+#if 0
   p_stats->c_ecnb = fs->cnt_rx_ecn_bytes;
+#else
+  p_stats->c_ecnb = 0;
+#endif
   p_stats->txp = fs->tx_sent != 0;
   p_stats->rtt = fs->rtt_est;
 

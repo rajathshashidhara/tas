@@ -179,7 +179,7 @@ static int dump_flow(uint32_t flow_id)
       fs->tx_base, fs->tx_len, fs->tx_avail, fs->tx_sent, fs->tx_next_pos,
       fs->tx_next_seq, fs->tx_next_ts,
       fs->tx_rate, fs->cnt_tx_drops, fs->cnt_rx_acks, fs->cnt_rx_ack_bytes,
-      fs->cnt_rx_ecn_bytes, fs->rtt_est);
+      0, fs->rtt_est);
 
   return 0;
 }

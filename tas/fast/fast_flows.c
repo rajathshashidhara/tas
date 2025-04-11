@@ -45,7 +45,7 @@ struct flow_key {
   beui16_t remote_port;
 } __attribute__((packed));
 
-#if 1
+#if 0
 #define fs_lock(fs) util_spin_lock(&fs->lock)
 #define fs_unlock(fs) util_spin_unlock(&fs->lock)
 #else
@@ -109,6 +109,7 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
   uint32_t avail, len, tx_pos, tx_seq, ack, rx_wnd;
   uint16_t new_core;
   uint8_t fin;
+  uint32_t bump = 0;
   int ret = 0;
 
   fs_lock(fs);
@@ -168,6 +169,21 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
     goto unlock;
   }
   len = MIN(avail, config.tcp_mss);
+
+  /* If SACK block exists, don't retx */
+  if (fs->tx_ooo_end != 0) {
+    if (fs->tx_sent + len <= fs->tx_ooo_start) {}
+    else if (fs->tx_sent < fs->tx_ooo_start && fs->tx_ooo_start < fs->tx_sent + len) {
+      /* Trim tail */
+      len = fs->tx_ooo_start - fs->tx_sent;
+    }
+    else if (fs->tx_ooo_start <= fs->tx_sent && fs->tx_sent <= fs->tx_ooo_end) {
+      bump = fs->tx_ooo_end - fs->tx_sent;
+      fs->tx_sent += bump;
+      fs->tx_next_seq += bump;
+    }
+    else if (fs->tx_sent > fs->tx_ooo_end) {}
+  }
 
   /* state snapshot for creating segment */
   tx_seq = fs->tx_next_seq;
@@ -384,9 +400,11 @@ int fast_flows_packet(struct dataplane_context *ctx,
       tcp_valid_rxack(fs, ack, &tx_bump) == 0))
   {
     fs->cnt_rx_ack_bytes += tx_bump;
+#if 0
     if ((TCPH_FLAGS(&p->tcp) & TCP_ECE) == TCP_ECE) {
       fs->cnt_rx_ecn_bytes += tx_bump;
     }
+#endif
 
     if (LIKELY(tx_bump <= fs->tx_sent)) {
       fs->tx_sent -= tx_bump;
@@ -403,6 +421,17 @@ int fast_flows_packet(struct dataplane_context *ctx,
       fprintf(stderr, "dma_krx_pkt_fastpath: acked more bytes than sent\n");
       abort();
 #endif
+    }
+
+    /* If SACK exists. Update it. */
+    /* TODO: Validate SACK? */
+    if (opts->sack != NULL) {
+      fs->tx_ooo_start = f_beui32(opts->sack->ack_ooo_start);
+      fs->tx_ooo_end = f_beui32(opts->sack->ack_ooo_end);
+    }
+    else if (fs->tx_ooo_end != 0) {
+      /* It previously existed. Now disappeared! */
+      fs->tx_ooo_start = fs->tx_ooo_end = 0;
     }
 
     /* duplicate ack */
