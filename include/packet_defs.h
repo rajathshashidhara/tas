@@ -171,6 +171,7 @@ struct tcp_hdr {
 #define TCP_OPT_MSS 2
 #define TCP_OPT_WS 3
 #define TCP_OPT_TIMESTAMP 8
+#define TCP_OPT_SACK 5
 struct tcp_mss_opt {
   uint8_t kind;
   uint8_t length;
@@ -195,6 +196,14 @@ struct tcp_timestamp_opt {
   uint8_t length;
   beui32_t ts_val;
   beui32_t ts_ecr;
+} __attribute__((packed));
+
+/* We only support 1-block SACK. */
+struct tcp_sack_opt {
+  uint8_t kind;
+  uint8_t length;
+  beui32_t ack_ooo_start;
+  beui32_t ack_ooo_end;
 } __attribute__((packed));
 
 struct tcp_timestamp_padded_opt {
