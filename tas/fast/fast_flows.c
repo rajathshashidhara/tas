@@ -168,6 +168,10 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
     goto unlock;
   }
   len = MIN(avail, config.tcp_mss);
+  if (config.tcp_strict_mss && len != config.tcp_mss) {
+    ret = -1;
+    goto unlock;
+  }
 
   /* state snapshot for creating segment */
   tx_seq = fs->tx_next_seq;

@@ -65,6 +65,8 @@ struct configuration {
   uint32_t tcp_handshake_retries;
   /** Maximum Segment Size (MSS) */
   uint32_t tcp_mss;
+  /** Only send MSS-sized segments */
+  uint32_t tcp_strict_mss;
   /** Window scale configuration */
   uint8_t tcp_window_scale;
   /** Remote window scale */
