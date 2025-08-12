@@ -656,7 +656,7 @@ static int config_defaults(struct configuration *c, char *progname)
   c->app_kout_len = 1024 * 1024;
   c->arp_to = 500;
   c->arp_to_max = 10000000;
-  c->tcp_rtt_init = 50;
+  c->tcp_rtt_init = 20;
   c->tcp_link_bw = 10;
   c->tcp_rxbuf_len = 8192;
   c->tcp_txbuf_len = 8192;

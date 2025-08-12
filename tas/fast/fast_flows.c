@@ -412,11 +412,9 @@ int fast_flows_packet(struct dataplane_context *ctx,
       tcp_valid_rxack(fs, ack, &tx_bump) == 0))
   {
     fs->cnt_rx_ack_bytes += tx_bump;
-#if 0
     if ((TCPH_FLAGS(&p->tcp) & TCP_ECE) == TCP_ECE) {
       fs->cnt_rx_ecn_bytes += tx_bump;
     }
-#endif
 
     if (LIKELY(tx_bump <= fs->tx_sent)) {
       fs->tx_sent -= tx_bump;
@@ -532,11 +530,15 @@ int fast_flows_packet(struct dataplane_context *ctx,
   {
     rtt = ts - f_beui32(opts->ts->ts_ecr);
     if (rtt < TCP_MAX_RTT) {
+#if 0
       if (LIKELY(fs->rtt_est != 0)) {
         fs->rtt_est = (fs->rtt_est * 7 + rtt) / 8;
       } else {
         fs->rtt_est = rtt;
       }
+#else
+      (void) rtt;
+#endif
     }
   }
 
