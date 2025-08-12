@@ -214,11 +214,16 @@ static inline int tcp_valid_rxack(struct flextcp_pl_flowst *fs, uint32_t ack,
 static inline uint32_t tcp_txavail(const struct flextcp_pl_flowst *fs,
     const uint32_t *pavail)
 {
-  uint32_t buf_avail, fc_avail, sacked_avail;
+  uint32_t buf_avail, fc_avail;
+#if 0
+  uint32_t sacked_avail;
+#endif
 
   buf_avail = (pavail != NULL ? *pavail : fs->tx_avail);
+#if 0
   sacked_avail = (fs->tx_ooo_end != 0 ? (fs->tx_ooo_end - fs->tx_ooo_start) : 0);
   buf_avail -= sacked_avail;  // Subtract already ACK'ed data
+#endif
 
   /* flow control window */
   fc_avail = fs->rx_remote_avail - fs->tx_sent;
