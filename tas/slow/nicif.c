@@ -241,7 +241,9 @@ int nicif_connection_add(uint32_t db, uint64_t mac_remote, uint32_t ip_local,
   fs->tx_avail = 0;
   fs->tx_next_ts = 0;
   fs->tx_rate = rate;
+#if 0
   fs->rtt_est = 0;
+#endif
 
   /* write to empty entry first */
   MEM_BARRIER();
@@ -307,13 +309,13 @@ int nicif_connection_stats(uint32_t f_id,
   p_stats->c_drops = fs->cnt_tx_drops;
   p_stats->c_acks = fs->cnt_rx_acks;
   p_stats->c_ackb = fs->cnt_rx_ack_bytes;
-#if 0
-  p_stats->c_ecnb = fs->cnt_rx_ecn_bytes;
-#else
   p_stats->c_ecnb = 0;
-#endif
   p_stats->txp = fs->tx_sent != 0;
+#if 0
   p_stats->rtt = fs->rtt_est;
+#else
+  p_stats->rtt = config.tcp_rtt_init;
+#endif
 
   return 0;
 }

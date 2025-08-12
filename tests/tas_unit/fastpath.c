@@ -85,7 +85,9 @@ static void flow_init(uint32_t fid, uint32_t rxlen, uint32_t txlen, uint64_t opa
   fs->rx_avail = rxlen;
   fs->rx_remote_avail = rxlen;
   fs->tx_rate = 10000;
+#if 0
   fs->rtt_est = 18;
+#endif
 }
 
 /* alloc dummy mbuf */

@@ -319,12 +319,12 @@ struct flextcp_pl_flowst {
   uint16_t cnt_rx_acks;
   /** Counter bytes sent */
   uint32_t cnt_rx_ack_bytes;
-#if 0
   /** Counter acks marked */
   uint32_t cnt_rx_ecn_bytes;
-#endif
+#if 0
   /** RTT estimate */
   uint32_t rtt_est;
+#endif
 
 // 128
 } __attribute__((packed, aligned(64)));
