@@ -662,7 +662,7 @@ static int config_defaults(struct configuration *c, char *progname)
   c->tcp_txbuf_len = 8192;
   c->tcp_handshake_to = 10000;
   c->tcp_handshake_retries = 10;
-  c->tcp_mss = 1448;
+  c->tcp_mss = 1440;
   c->tcp_strict_mss = 0;
   c->tcp_window_scale = 0;
   c->tcp_remote_window_scale = 0;
