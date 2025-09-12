@@ -190,7 +190,18 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
       bump = fs->tx_ooo_end - fs->tx_sent;
       fs->tx_sent += bump;
       fs->tx_next_seq += bump;
+      fs->tx_next_pos += bump;
+      if (fs->tx_next_pos >= fs->tx_len) {
+        fs->tx_next_pos -= fs->tx_len;
+      }
       fs->tx_avail -= bump;
+
+      avail = tcp_txavail(fs, NULL);
+      if (avail == 0) {
+        ret = -1;
+        goto unlock;
+      }
+      len = MIN(avail, config.tcp_mss);
     }
     else if (fs->tx_sent > fs->tx_ooo_end) {}
   }
@@ -309,7 +320,7 @@ int fast_flows_packet(struct dataplane_context *ctx,
 {
   struct pkt_tcp *p = network_buf_bufoff(nbh);
   struct flextcp_pl_flowst *fs = fsp;
-  uint32_t payload_bytes, payload_off, seq, ack, old_avail, new_avail,
+  uint32_t payload_bytes, payload_off, seq, ack, old_avail, new_avail, next_ack,
            orig_payload;
   uint8_t *payload;
   uint32_t rx_bump = 0, tx_bump = 0, rx_pos, rtt;
@@ -436,8 +447,9 @@ int fast_flows_packet(struct dataplane_context *ctx,
     /* If SACK exists. Update it. */
     /* TODO: Validate SACK? */
     if (opts->sack != NULL) {
-      fs->tx_ooo_start = f_beui32(opts->sack->ack_ooo_start);
-      fs->tx_ooo_end = f_beui32(opts->sack->ack_ooo_end);
+      next_ack = fs->tx_next_seq - fs->tx_sent;
+      fs->tx_ooo_start = ack + f_beui32(opts->sack->ack_ooo_start) - next_ack;
+      fs->tx_ooo_end = ack + f_beui32(opts->sack->ack_ooo_end) - next_ack;
     }
     else if (fs->tx_ooo_end != 0) {
       /* It previously existed. Now disappeared! */
