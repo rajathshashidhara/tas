@@ -36,6 +36,9 @@
 
 #define TCP_MAX_RTT 100000
 
+uint64_t tx_discard = 0;
+uint64_t tx_save = 0;
+
 //#define SKIP_ACK 1
 
 struct flow_key {
@@ -174,6 +177,43 @@ int fast_flows_qman(struct dataplane_context *ctx, uint32_t queue,
     goto unlock;
   }
   len = MIN(avail, config.tcp_mss);
+  if (config.tcp_strict_mss && len != config.tcp_mss) {
+    ret = -1;
+    goto unlock;
+  }
+
+  /* If SACK block exists, don't retx */
+  if (config.tcp_sack_enable) {
+    if (fs->tx_ooo_end != 0) {
+      if (fs->tx_sent + len <= fs->tx_ooo_start) {}
+      else if (fs->tx_sent < fs->tx_ooo_start && fs->tx_ooo_start < fs->tx_sent + len) {
+        /* Trim tail */
+        tx_save += (len - (fs->tx_ooo_start - fs->tx_sent));
+        len = fs->tx_ooo_start - fs->tx_sent;
+      }
+      else if (fs->tx_ooo_start <= fs->tx_sent && fs->tx_sent <= fs->tx_ooo_end) {
+        bump = fs->tx_ooo_end - fs->tx_sent;
+        tx_save += bump;
+        fs->tx_sent += bump;
+        fs->tx_next_seq += bump;
+        fs->tx_next_pos += bump;
+        if (fs->tx_next_pos >= fs->tx_len) {
+          fs->tx_next_pos -= fs->tx_len;
+        }
+        fs->tx_avail -= bump;
+        fs->rx_dupack_cnt = 0;
+        fs->cnt_rx_ack_bytes += bump;
+
+        avail = tcp_txavail(fs, NULL);
+        if (avail == 0) {
+          ret = -1;
+          goto unlock;
+        }
+        len = MIN(avail, config.tcp_mss);
+      }
+      else if (fs->tx_sent > fs->tx_ooo_end) {}
+    }
+  }
 
   /* If SACK block exists, don't retx */
   if (fs->tx_ooo_end != 0) {
@@ -305,7 +345,7 @@ int fast_flows_packet(struct dataplane_context *ctx,
 {
   struct pkt_tcp *p = network_buf_bufoff(nbh);
   struct flextcp_pl_flowst *fs = fsp;
-  uint32_t payload_bytes, payload_off, seq, ack, old_avail, new_avail,
+  uint32_t payload_bytes, payload_off, seq, ack, old_avail, new_avail, next_ack,
            orig_payload;
   uint8_t *payload;
   uint32_t rx_bump = 0, tx_bump = 0, rx_pos, rtt;
@@ -313,6 +353,7 @@ int fast_flows_packet(struct dataplane_context *ctx,
   uint16_t tcp_extra_hlen, trim_start, trim_end;
   uint16_t flow_id = fs - fp_state->flowst;
   int trigger_ack = 0, fin_bump = 0;
+  trim_start = trim_end = 0;
 
   tcp_extra_hlen = (TCPH_HDRLEN(&p->tcp) - 5) * 4;
   payload_off = sizeof(*p) + tcp_extra_hlen;
@@ -431,13 +472,16 @@ int fast_flows_packet(struct dataplane_context *ctx,
 
     /* If SACK exists. Update it. */
     /* TODO: Validate SACK? */
-    if (opts->sack != NULL) {
-      fs->tx_ooo_start = f_beui32(opts->sack->ack_ooo_start);
-      fs->tx_ooo_end = f_beui32(opts->sack->ack_ooo_end);
-    }
-    else if (fs->tx_ooo_end != 0) {
-      /* It previously existed. Now disappeared! */
-      fs->tx_ooo_start = fs->tx_ooo_end = 0;
+    if (config.tcp_sack_enable) {
+      if (opts->sack != NULL) {
+        next_ack = fs->tx_next_seq - fs->tx_sent;
+        fs->tx_ooo_start = ack + f_beui32(opts->sack->ack_ooo_start) - next_ack;
+        fs->tx_ooo_end = ack + f_beui32(opts->sack->ack_ooo_end) - next_ack;
+      }
+      else if (fs->tx_ooo_end != 0) {
+        /* It previously existed. Now disappeared! */
+        fs->tx_ooo_start = fs->tx_ooo_end = 0;
+      }
     }
 
     /* duplicate ack */
@@ -618,6 +662,8 @@ int fast_flows_packet(struct dataplane_context *ctx,
   }
 
 unlock:
+  tx_discard += (trim_start + trim_end);
+
   /* if we bumped at least one, then we need to add a notification to the
    * queue */
   if (LIKELY(rx_bump != 0 || tx_bump != 0 || fin_bump)) {

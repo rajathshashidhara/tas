@@ -49,8 +49,10 @@ enum cfg_params {
   CP_TCP_HANDSHAKE_TO,
   CP_TCP_HANDSHAKE_RETRIES,
   CP_TCP_MSS,
+  CP_TCP_STRICT_MSS,
   CP_TCP_WINDOW_SCALE,
   CP_TCP_REMOTE_WINDOW_SCALE,
+  CP_TCP_SACK_ENABLE,
   CP_CC,
   CP_CC_CONTROL_GRANULARITY,
   CP_CC_CONTROL_INTERVAL,
@@ -136,12 +138,18 @@ static struct option opts[] = {
     { .name = "tcp-mss",
       .has_arg = required_argument,
       .val = CP_TCP_MSS },
+    { .name = "tcp-strict-mss",
+      .has_arg = no_argument,
+      .val = CP_TCP_STRICT_MSS },
     { .name = "tcp-window-scale",
       .has_arg = required_argument,
       .val = CP_TCP_WINDOW_SCALE },
     { .name = "tcp-remote-window-scale",
       .has_arg = required_argument,
       .val = CP_TCP_REMOTE_WINDOW_SCALE },
+    { .name = "tcp-sack-enable",
+      .has_arg = no_argument,
+      .val = CP_TCP_SACK_ENABLE },
     { .name = "cc",
       .has_arg = required_argument,
       .val = CP_CC },
@@ -370,6 +378,9 @@ int config_parse(struct configuration *c, int argc, char *argv[])
           goto failed;
         }
         break;
+      case CP_TCP_STRICT_MSS:
+	c->tcp_strict_mss = 1;
+	break;
       case CP_TCP_WINDOW_SCALE:
         if (parse_int8(optarg, &c->tcp_window_scale) != 0) {
           fprintf(stderr, "tcp window scale parsing failed\n");
@@ -381,6 +392,9 @@ int config_parse(struct configuration *c, int argc, char *argv[])
           fprintf(stderr, "tcp rx window scale parsing failed\n");
           goto failed;
         }
+        break;
+      case CP_TCP_SACK_ENABLE:
+        c->tcp_sack_enable = 1;
         break;
       case CP_CC:
         if (!strcmp(optarg, "dctcp-win")) {
@@ -655,9 +669,11 @@ static int config_defaults(struct configuration *c, char *progname)
   c->tcp_txbuf_len = 8192;
   c->tcp_handshake_to = 10000;
   c->tcp_handshake_retries = 10;
-  c->tcp_mss = 1448;
+  c->tcp_mss = 1440;
+  c->tcp_strict_mss = 0;
   c->tcp_window_scale = 0;
   c->tcp_remote_window_scale = 0;
+  c->tcp_sack_enable = 0;
   c->cc_algorithm = CONFIG_CC_DCTCP_RATE;
   c->cc_control_granularity = 50;
   c->cc_control_interval = 2;
