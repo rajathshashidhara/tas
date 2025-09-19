@@ -49,6 +49,8 @@ struct kernel_statistics kstats;
 uint32_t cur_ts;
 int kernel_notifyfd = 0;
 static int epfd;
+extern uint64_t tx_discard;
+extern uint64_t tx_save;
 
 int slowpath_main(void)
 {
@@ -137,8 +139,9 @@ int slowpath_main(void)
     if (cur_ts - last_print >= 1000000) {
       if (!config.quiet) {
         printf("stats: drops=%"PRIu64" k_rexmit=%"PRIu64" ecn=%"PRIu64" acks=%"
-            PRIu64"\n", kstats.drops, kstats.kernel_rexmit, kstats.ecn_marked,
-            kstats.acks);
+            PRIu64" discard=%"PRIu64" save=%"PRIu64"\n", kstats.drops,
+            kstats.kernel_rexmit, kstats.ecn_marked,
+            kstats.acks, tx_discard, tx_save);
 #ifdef DATAPLANE_STATS
 	      dataplane_dump_stats();
 #endif
